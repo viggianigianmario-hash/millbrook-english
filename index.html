@@ -1,0 +1,2165 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#CFE5F5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Millbrook">
+</head>
+<body style="margin:0">
+<title>Millbrook 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: full-screen 3D town; HUD floats over it, conversation opens as a bottom sheet. Single daylight look on purpose. */
+:root {
+  --ink: #1D2A23;
+  --muted: #56675D;
+  --panel: #FFFDF8;
+  --line: #D9DDD2;
+  --brick: #B0372B;
+  --slate: #2C5B7B;
+  --hedge: #3F7440;
+  --amber: #8A5F00;
+  --me: #E3ECF3;
+  --good-bg: #E6F0E1;
+  --ok-bg: #F7EFD9;
+  --bad-bg: #F6E3E0;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: #CFE5F5; color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.45; overflow: hidden; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, textarea:focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
+#app { position: fixed; inset: 0; }
+#app canvas.gl { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud { position: absolute; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+
+.tl { top: calc(12px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 8px; max-width: min(340px, calc(100% - 180px)); }
+.brand { background: var(--panel); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 12px; box-shadow: 0 3px 0 var(--ink); }
+.brand h1 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1; }
+.brand h1 span { color: var(--brick); }
+.chip { display: inline-flex; gap: 6px; align-items: center; background: var(--panel); border: 1.5px solid var(--ink); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; width: fit-content; max-width: 100%; }
+.chip.warn { background: #FFF1D6; border-color: var(--amber); }
+.chip button { border: 0; background: none; text-decoration: underline; font-weight: 700; padding: 0; font-size: 13px; }
+.tr { top: calc(12px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+#mini { width: 160px; height: 160px; border: 2px solid var(--ink); border-radius: 12px; background: #CFE3BC; box-shadow: 0 3px 0 var(--ink); }
+.small-btn { background: var(--panel); border: 1.5px solid var(--ink); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700; }
+
+.guide { top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: var(--panel); border: 2px solid var(--ink); border-radius: 999px; padding: 5px 12px 5px 8px; font-weight: 700; font-size: 14px; box-shadow: 0 3px 0 var(--ink); white-space: nowrap; }
+.guide svg { width: 26px; height: 26px; transition: transform .15s linear; }
+.guide button { border: 0; background: none; font-size: 18px; line-height: 1; padding: 0 0 0 4px; color: var(--muted); }
+
+.prompt { left: 50%; transform: translateX(-50%); bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+.talk-btn { display: flex; align-items: center; gap: 10px; background: var(--ink); color: #fff; border: 0; border-radius: 999px; padding: 12px 22px; font-family: var(--display); font-weight: 800; font-size: 18px; box-shadow: 0 4px 0 #000; white-space: nowrap; }
+.talk-btn kbd { font-family: var(--body); font-size: 12px; background: rgba(255,255,255,.2); border-radius: 5px; padding: 1px 6px; }
+@media (prefers-reduced-motion: no-preference) { .talk-btn { animation: pulse 1.6s ease-in-out infinite; } @keyframes pulse { 50% { transform: translateY(-3px); } } }
+
+.bubble { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); background: #fff; border: 2px solid var(--ink); border-radius: 14px; padding: 6px 11px; max-width: 240px; font-size: 15px; font-weight: 700; pointer-events: none; box-shadow: 0 3px 0 var(--ink); }
+.bubble small { display: block; font-weight: 400; font-style: italic; color: var(--muted); font-size: 12px; }
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 14px; height: 14px; background: #fff; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
+
+.joy { left: max(24px, env(safe-area-inset-left, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,253,248,.5); border: 2px solid rgba(29,42,35,.5); touch-action: none; }
+.joy i { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: var(--ink); opacity: .8; }
+.keys { left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: rgba(255,253,248,.88); border-radius: 10px; padding: 6px 10px; font-size: 13px; color: var(--muted); }
+.keys b { color: var(--ink); }
+
+.sheet { left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+.card { width: min(760px, 100%); max-height: min(58vh, 600px); overflow-y: auto; background: var(--panel); border: 2px solid var(--ink); border-radius: 16px; box-shadow: 0 5px 0 var(--ink); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.card-head .btn { white-space: nowrap; }
+.who h2 { margin: 0; font-family: var(--display); font-size: 21px; line-height: 1.1; }
+.who p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.line { border-radius: 12px; padding: 10px 12px; }
+.line.npc { background: #F1F4EE; border: 1px solid var(--line); }
+.line.me { background: var(--me); }
+.line .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; color: var(--muted); }
+.line .en { font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }
+.line .it { font-size: 15px; color: var(--muted); font-style: italic; margin-top: 3px; }
+.acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.mini { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--muted); }
+.mini:hover { border-color: var(--ink); color: var(--ink); }
+.fb { border-radius: 10px; padding: 9px 12px; font-size: 15px; border: 1px solid transparent; }
+.fb strong { display: block; font-family: var(--display); font-size: 15px; }
+.fb.good { background: var(--good-bg); border-color: var(--hedge); } .fb.good strong { color: var(--hedge); }
+.fb.ok { background: var(--ok-bg); border-color: var(--amber); } .fb.ok strong { color: var(--amber); }
+.fb.bad { background: var(--bad-bg); border-color: var(--brick); } .fb.bad strong { color: var(--brick); }
+.speakrow { display: flex; gap: 10px; align-items: stretch; }
+.mic { flex: none; width: 64px; border-radius: 14px; border: 2px solid var(--ink); background: var(--brick); color: #fff; display: grid; place-items: center; }
+.mic svg { width: 28px; height: 28px; }
+.mic.on { background: var(--hedge); }
+@media (prefers-reduced-motion: no-preference) { .mic.on { animation: pulse 1s ease-in-out infinite; } }
+.inputwrap { flex: 1; min-width: 0; }
+.inputwrap textarea { width: 100%; min-height: 52px; resize: none; font: inherit; font-size: 17px; padding: 9px 11px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--ink); background: #fff; padding: 7px 13px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+.btn.primary { background: var(--ink); color: #fff; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.opts { display: flex; flex-direction: column; gap: 7px; }
+.opt { text-align: left; border: 1.5px solid var(--line); background: #fff; border-radius: 10px; padding: 9px 12px; font-size: 16px; }
+.opt:hover:not([disabled]) { border-color: var(--slate); background: var(--me); }
+.opt[disabled] { text-decoration: line-through; opacity: .5; }
+.opt small { display: block; color: var(--muted); font-style: italic; font-size: 13px; }
+.sugg { display: flex; flex-direction: column; gap: 6px; }
+.sugg button { text-align: left; border: 1px dashed var(--slate); background: var(--me); border-radius: 10px; padding: 7px 11px; font-size: 15px; }
+.sugg button small { display: block; color: var(--muted); font-style: italic; }
+details { border-top: 1px solid var(--line); padding-top: 8px; }
+summary { cursor: pointer; font-weight: 700; font-size: 14px; }
+.phr { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.phr button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 11px; font-size: 14px; text-align: left; }
+.phr button:hover { border-color: var(--ink); }
+.tip { margin-top: 8px; font-size: 14px; }
+.tip b { color: var(--brick); }
+
+.modal { inset: 0; display: grid; place-items: center; background: rgba(29,42,35,.45); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.modal .card { max-height: 86vh; }
+.modal h2 { margin: 0; font-family: var(--display); font-size: 26px; }
+.modal ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.people { display: grid; gap: 8px; }
+.person { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.person .sw { width: 12px; height: 12px; border-radius: 50%; }
+.person b { font-size: 15px; }
+.person span { color: var(--muted); font-size: 13px; grid-column: 2; }
+.person .go { grid-row: span 2; grid-column: 3; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+.loading { inset: 0; display: grid; place-items: center; background: #CFE5F5; z-index: 5; }
+.loading > div { text-align: center; display: grid; gap: 12px; justify-items: center; padding: 0 16px; }
+.loading h2 { margin: 0; font-family: var(--display); font-size: 34px; font-weight: 800; }
+.loading h2 span { color: var(--brick); }
+.bar { width: min(320px, 80vw); height: 12px; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; background: #fff; }
+.bar i { display: block; height: 100%; width: 0; background: var(--hedge); transition: width .2s; }
+@media (max-width: 560px) {
+  #mini { width: 118px; height: 118px; }
+  .line .en { font-size: 17px; }
+  .card { max-height: 56vh; }
+  .guide { top: auto; bottom: calc(166px + env(safe-area-inset-bottom, 0px)); }
+}
+.topics { display: flex; gap: 6px; flex-wrap: wrap; }
+.topic { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: #fff; }
+.topic.now { background: var(--ink); color: #fff; border-color: var(--ink); }
+.topic.done { color: var(--hedge); border-color: var(--hedge); }
+.talkbar { display: flex; gap: 12px; align-items: stretch; }
+.mic { flex: none; width: 88px; border-radius: 16px; border: 2px solid var(--ink); background: var(--brick); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 800; font-family: var(--display); font-size: 15px; padding: 8px 0; }
+.mic svg { width: 30px; height: 30px; }
+.mic.on { background: var(--hedge); }
+.mic[disabled] { opacity: .45; cursor: not-allowed; }
+.talkside { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.heard { min-height: 44px; border: 1.5px dashed var(--line); border-radius: 12px; padding: 8px 11px; font-size: 16px; color: var(--muted); overflow-wrap: anywhere; }
+.heard.live { color: var(--ink); border-color: var(--hedge); border-style: solid; }
+.typebox { display: flex; gap: 8px; }
+.typebox textarea { flex: 1; min-width: 0; resize: none; font: inherit; font-size: 16px; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
+.fbwrap { display: flex; flex-direction: column; gap: 8px; }
+.fbwrap:empty { display: none; }
+.models { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.model { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; }
+.model b { font-size: 16px; font-weight: 700; }
+.model small { grid-column: 1; color: var(--muted); font-style: italic; }
+.model .acts { grid-row: span 2; grid-column: 2; margin: 0; }
+.err { margin-top: 4px; }
+.err s { color: var(--brick); }
+.err b { color: var(--hedge); }
+.fb .why { color: var(--muted); font-size: 14px; }
+.check { display: inline-flex; gap: 7px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--hedge); }
+.name-field { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.name-field input { font: inherit; padding: 6px 10px; border: 1.5px solid var(--line); border-radius: 8px; min-width: 0; width: 180px; }
+.summary-list { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 560px) { .mic { width: 72px; } .heard { font-size: 15px; } }
+
+/* while talking: keep the face visible and the panel compact */
+.card { transform: translateZ(0); isolation: isolate; overscroll-behavior: contain; }
+body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { display: none !important; }
+@media (max-width: 560px) {
+  #d-role, .topics { display: none; }
+  .card { max-height: 62vh; padding: 12px 12px 14px; gap: 10px; }
+  .who h2 { font-size: 18px; }
+  .talkbar { gap: 8px; }
+  .heard { min-height: 38px; }
+  .talkside .row { flex-wrap: nowrap; }
+  .talkside .btn { padding: 6px 10px; font-size: 13px; }
+}
+</style>
+
+<div id="app">
+  <div class="hud loading" id="loading"><div><h2>Mill<span>brook</span></h2><p class="note" id="load-msg">Costruisco il paese…</p><div class="bar"><i id="load-bar"></i></div></div></div>
+
+  <div class="hud tl">
+    <div class="brand"><h1>Mill<span>brook</span></h1></div>
+    <div class="chip" id="met">Persone conosciute: 0/9</div>
+    <div class="chip" id="voice-chip">Voce: in attesa</div>
+  </div>
+  <div class="hud tr">
+    <canvas id="mini" width="320" height="320" aria-label="Mappa del paese"></canvas>
+    <button class="small-btn" id="people-btn" type="button">Chi incontrare</button>
+    <button class="small-btn" id="help-btn" type="button">Come si gioca</button>
+  </div>
+  <div class="hud guide" id="guide" hidden><svg viewBox="0 0 24 24" id="guide-arrow"><path d="M12 2l7 18-7-4-7 4z" fill="#B0372B" stroke="#1D2A23" stroke-width="1.5" stroke-linejoin="round"/></svg><span id="guide-text"></span><button type="button" id="guide-x" aria-label="Chiudi la guida">×</button></div>
+
+  <div class="hud keys" id="keys"><b>W A S D</b> per camminare · <b>Shift</b> per correre · trascina per guardarti intorno · <b>E</b> per parlare</div>
+  <div class="hud joy" id="joy" hidden><i id="knob"></i></div>
+  <div id="bubbles"></div>
+
+  <div class="hud prompt" id="prompt" hidden>
+    <button class="talk-btn" id="talk-btn" type="button"><span id="talk-label">Parla</span> <kbd>E</kbd></button>
+  </div>
+
+  <div class="hud sheet" id="sheet" hidden>
+    <div class="card" role="dialog" aria-label="Conversazione">
+      <div class="card-head">
+        <div class="who"><h2 id="d-name"></h2><p id="d-role"></p></div>
+        <button class="btn" id="bye" type="button">Saluta e vai</button>
+      </div>
+      <div class="topics" id="topics"></div>
+      <div class="line npc" aria-live="polite">
+        <div class="lbl" id="d-npclbl"></div>
+        <div class="en" id="d-npc"></div>
+        <div class="it" id="d-npcit" hidden></div>
+        <div class="acts">
+          <button class="mini" id="replay" type="button">Riascolta</button>
+          <button class="mini" id="slow" type="button">Più lento</button>
+          <button class="mini" id="translate" type="button">Traduci</button>
+        </div>
+      </div>
+      <div class="fbwrap" id="d-fb"></div>
+      <div class="talkbar">
+        <button class="mic" id="mic" type="button" aria-label="Parla al microfono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="mic-label">Parla</span></button>
+        <div class="talkside">
+          <div class="heard" id="heard">Tocca "Parla" e rispondi in inglese.</div>
+          <div class="row">
+            <button class="btn" id="help-say" type="button">Non so cosa dire</button>
+            <button class="btn" id="ask-repeat" type="button">Non ho capito</button>
+          </div>
+        </div>
+      </div>
+      <div class="typebox">
+        <textarea id="say" rows="1" placeholder="…oppure scrivi qui la tua risposta"></textarea>
+        <button class="btn primary" id="send" type="button">Invia</button>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="handsfree"> Mani libere: ti ascolto da solo quando ha finito di parlare</label>
+        <button class="mini" id="mode-btn" type="button" hidden>Conversazione libera con l'AI</button>
+      </div>
+      <p class="note" id="d-note"></p>
+      <details>
+        <summary>Frasi utili, modi di dire e buone maniere</summary>
+        <div class="phr" id="phr"></div>
+        <div class="tip" id="tip"></div>
+      </details>
+    </div>
+  </div>
+
+  <div class="hud modal" id="people" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Chi incontrare</h2><button class="btn" id="people-x" type="button">Chiudi</button></div>
+      <p class="note">"Mostra la strada" mette una freccia in alto che ti guida. "Vai lì" ti porta subito davanti alla persona.</p>
+      <div class="people" id="people-list"></div>
+    </div>
+  </div>
+
+  <div class="hud modal" id="help" hidden>
+    <div class="card">
+      <h2>Come si gioca</h2>
+      <ol>
+        <li><b>Cammina</b> con W A S D (Shift per correre) e trascina per guardarti intorno. Da telefono: cerchio in basso a sinistra e dito sullo schermo.</li>
+        <li><b>Avvicinati alle persone</b>: si girano, ti guardano e ti salutano a voce. Puoi fermare e parlare anche con i <b>passanti</b> per strada.</li>
+        <li>Premi <b>"Parla con…"</b> (o E) e fai una vera conversazione: saluti, come stai, cosa fai oggi, il meteo, il lavoro, la vita, il tempo libero, e poi la situazione del posto.</li>
+        <li>Rispondi <b>a voce</b> con "Parla" (o scrivendo). Se ti blocchi premi <b>"Non so cosa dire"</b>: ti faccio sentire come rispondere, tu ripeti e io controllo.</li>
+        <li><b>"Chi incontrare"</b> ti mostra le 9 persone, con la strada per raggiungerle.</li>
+      </ol>
+      <label class="name-field">Come ti chiami? <input id="uname" type="text" autocomplete="given-name" placeholder="Il tuo nome"></label>
+      <p class="note">Alza il volume e togli il silenzioso: i personaggi parlano. Se non senti nulla, guarda l'indicatore "Voce" in alto a sinistra.</p>
+      <p class="note" id="mic-help"></p>
+      <div class="row"><button class="btn" id="voice-test" type="button">Prova la voce</button><button class="btn primary" id="help-close" type="button">Inizia a esplorare</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script>
+const PLACES = [
+  { id: "station", en: "The Station", it: "La stazione", type: "life", x: 140, y: 120,
+    npc: { name: "Mr Patel", role: "ticket office clerk", roleIt: "addetto alla biglietteria" },
+    setting: "Arrivi alla stazione di Millbrook. Devi comprare un biglietto per Londra.",
+    scene: "The learner is at the ticket office of Millbrook station and wants to buy a ticket to London and find the right platform.",
+    steps: [
+      { npc: ["Good morning! How can I help you?", "Buongiorno! Come posso aiutarla?"], opts: [
+        ["Hi, could I have a return ticket to London, please?", "Salve, potrei avere un biglietto di andata e ritorno per Londra, per favore?", 2, "\"Could I have…, please?\" è il modo più cortese e naturale per chiedere qualcosa."],
+        ["I want a ticket to London.", "Voglio un biglietto per Londra.", 1, "Si capisce, ma \"I want\" suona brusco in inglese. Meglio \"Could I have…\" o \"I'd like…\"."],
+        ["Give me ticket London.", "Dammi biglietto Londra.", 0, "Troppo diretto e manca l'articolo: \"a ticket to London\". Prova con una richiesta cortese."]] },
+      { npc: ["Single or return? And are you travelling today?", "Solo andata o andata e ritorno? E viaggia oggi?"], opts: [
+        ["Return, please. I'm coming back this evening.", "Andata e ritorno, per favore. Torno stasera.", 2, "Per un piano già deciso si usa il present continuous: \"I'm coming back\"."],
+        ["Return. I come back tonight.", "Andata e ritorno. Torno stanotte.", 1, "Per un piano già deciso si dice \"I'm coming back tonight\", non \"I come back\"."],
+        ["Yes.", "Sì.", 0, "Ti ha chiesto di scegliere tra due opzioni: rispondi con quella che vuoi, per esempio \"Return, please.\""]] },
+      { npc: ["That's thirty-eight pounds fifty. Would you like a receipt?", "Sono 38,50 sterline. Vuole la ricevuta?"], opts: [
+        ["Yes, please. Can I pay by card?", "Sì, grazie. Posso pagare con la carta?", 2, "Attenzione alle preposizioni: \"pay by card\", \"pay in cash\"."],
+        ["Yes, I pay with card.", "Sì, pago con carta.", 1, "Si dice \"pay by card\". E per chiedere il permesso: \"Can I pay by card?\""],
+        ["Receipt yes.", "Ricevuta sì.", 0, "Troppo telegrafico. Basta \"Yes, please.\""]] },
+      { npc: ["There you go. The next train leaves from platform four at ten fifteen.", "Ecco a lei. Il prossimo treno parte dal binario 4 alle 10:15."], opts: [
+        ["Sorry, which platform did you say?", "Scusi, quale binario ha detto?", 2, "Ottima strategia: fai ripetere solo la parte che non hai capito."],
+        ["Thanks a lot. Have a good day!", "Grazie mille. Buona giornata!", 2, "Chiusura perfetta e cordiale."],
+        ["Okay.", "Ok.", 1, "Va bene, ma un po' freddo. In Inghilterra si ringrazia moltissimo: aggiungi \"Thanks!\""]] }
+    ],
+    end: ["Platform four. You're welcome, and enjoy your trip to London!", "Binario 4. Prego, e buon viaggio a Londra!"],
+    phrases: [["A return ticket to London, please.", "Un biglietto di andata e ritorno per Londra, per favore."], ["Which platform does the train to Oxford leave from?", "Da quale binario parte il treno per Oxford?"], ["Is this the right train for Bristol?", "È questo il treno giusto per Bristol?"], ["What time is the next train to London?", "A che ora è il prossimo treno per Londra?"], ["Has the train been delayed?", "Il treno è in ritardo?"], ["Excuse me, is this seat taken?", "Mi scusi, è occupato questo posto?"]],
+    idioms: [["to miss the train", "perdere il treno (anche: perdere un'occasione)"], ["to be on the right track", "essere sulla strada giusta"], ["off the beaten track", "fuori dai percorsi turistici"], ["that train has left the station", "ormai è troppo tardi, la decisione è presa"]],
+    manners: ["In Gran Bretagna si fa la fila (\"queue\") con ordine. Superare qualcuno è considerato molto maleducato.", "Molti treni hanno una \"quiet coach\": una carrozza dove non si parla al telefono.", "Si dice \"Sorry!\" anche quando è l'altra persona a urtarti. È un riflesso di cortesia."] },
+
+  { id: "cafe", en: "Rosie's Café", it: "Il bar di Rosie", type: "life", x: 390, y: 115,
+    npc: { name: "Rosie", role: "café owner", roleIt: "proprietaria del bar" },
+    setting: "Entri in un piccolo bar sulla piazza. Rosie è dietro il bancone e ha voglia di chiacchierare.",
+    scene: "The learner is ordering a coffee at Rosie's small, friendly café and chatting about the weather and why they are in town.",
+    steps: [
+      { npc: ["Morning! What can I get you, love?", "Buongiorno! Cosa ti porto, caro?"], opts: [
+        ["Could I get a flat white, please?", "Potrei avere un flat white, per favore?", 2, "\"Could I get…, please?\" è la formula standard per ordinare."],
+        ["I'd like a coffee.", "Vorrei un caffè.", 1, "Corretto! Ma \"a coffee\" è vago: specifica quale (latte, americano, flat white…)."],
+        ["One coffee for me now.", "Un caffè per me adesso.", 0, "Suona come un ordine brusco. Prova \"Could I get a…, please?\""]] },
+      { npc: ["Sure. Eat in or take away?", "Certo. Qui o da portare via?"], opts: [
+        ["Eat in, please.", "Qui, grazie.", 2, "Perfetto. Negli Stati Uniti si dice \"for here\"."],
+        ["To take away, please.", "Da portare via, grazie.", 2, "Corretto. Negli Stati Uniti si dice \"to go\"."],
+        ["I eat here.", "Io mangio qui.", 0, "La formula fissa è \"Eat in, please.\""]] },
+      { npc: ["Lovely weather today, isn't it? Finally some sun!", "Bel tempo oggi, vero? Finalmente un po' di sole!"], opts: [
+        ["It is! It makes a nice change from all the rain.", "Proprio così! Che bel cambiamento dopo tutta questa pioggia.", 2, "Il meteo è lo sport nazionale britannico. \"It makes a nice change\" è un'espressione molto naturale."],
+        ["Yes, it's beautiful.", "Sì, è bellissimo.", 1, "Va bene, ma aggiungi qualcosa per far continuare la conversazione."],
+        ["I don't care about the weather.", "Il tempo non mi interessa.", 0, "Il meteo serve a rompere il ghiaccio: liquidarlo così sembra scortese."]] },
+      { npc: ["So, are you visiting Millbrook, or do you live around here?", "Allora, sei in visita a Millbrook o abiti da queste parti?"], opts: [
+        ["I'm here for work, actually. I'm meeting a client this afternoon.", "In realtà sono qui per lavoro. Oggi pomeriggio incontro un cliente.", 2, "\"Actually\" significa \"in realtà\", non \"attualmente\". E hai dato un dettaglio che fa continuare il dialogo."],
+        ["I am here for work.", "Sono qui per lavoro.", 1, "Corretto. Aggiungi un dettaglio per tenere viva la conversazione."],
+        ["I live here since two years.", "Vivo qui da due anni.", 0, "Errore tipico degli italiani: si dice \"I've lived here for two years\". Con \"for/since\" serve il present perfect."]] }
+    ],
+    end: ["Well, good luck with your meeting! Here's your coffee.", "Allora in bocca al lupo per la riunione! Ecco il tuo caffè."],
+    phrases: [["Could I get a latte, please?", "Potrei avere un latte macchiato, per favore?"], ["Can I have it with oat milk?", "Posso averlo con latte d'avena?"], ["How much is that?", "Quanto le devo?"], ["Could I have the bill, please?", "Potrei avere il conto, per favore? (in USA: the check)"], ["Is there Wi-Fi here?", "C'è il Wi-Fi qui?"], ["Keep the change.", "Tenga il resto."]],
+    idioms: [["it's not my cup of tea", "non fa per me"], ["to break the ice", "rompere il ghiaccio"], ["to feel under the weather", "sentirsi poco bene"], ["it's raining cats and dogs", "piove a catinelle (un po' antiquato: capiscilo, usalo poco)"]],
+    manners: ["\"Love\", \"dear\" e \"mate\" sono modi affettuosi e normali di rivolgersi agli sconosciuti. Non sono maleducati.", "Il tempo è l'argomento perfetto per iniziare una conversazione con chiunque.", "\"Please\" e \"thank you\" si usano molto più spesso che in italiano: anche con il barista."] },
+
+  { id: "market", en: "The Market", it: "Il mercato", type: "life", x: 640, y: 120,
+    npc: { name: "Tom", role: "greengrocer at the market", roleIt: "fruttivendolo" },
+    setting: "È giorno di mercato. Tom urla i prezzi dalla sua bancarella di frutta e verdura.",
+    scene: "The learner is buying fruit and vegetables at Tom's market stall, asking prices, quantities and paying.",
+    steps: [
+      { npc: ["Fresh strawberries, two pounds a punnet! What are you after today?", "Fragole fresche, due sterline al cestino! Cosa cerca oggi?"], opts: [
+        ["Hi! How much are the tomatoes?", "Salve! Quanto costano i pomodori?", 2, "\"How much is / are…?\" per chiedere il prezzo. \"Tomatoes\" è plurale, quindi \"are\"."],
+        ["Tomatoes price?", "Prezzo pomodori?", 1, "Si capisce, ma è telegrafico. Meglio \"How much are the tomatoes?\""],
+        ["How much cost the tomatoes?", "Quanto costano i pomodori?", 0, "Ordine delle parole sbagliato: \"How much do the tomatoes cost?\" o, più semplice, \"How much are the tomatoes?\""]] },
+      { npc: ["Three pounds a kilo, or a fiver for two kilos.", "Tre sterline al chilo, o cinque sterline per due chili."], opts: [
+        ["Great, I'll take two kilos then.", "Perfetto, allora ne prendo due chili.", 2, "\"I'll take…\" è la formula naturale per decidere un acquisto. \"A fiver\" significa 5 sterline."],
+        ["I take two kilos.", "Prendo due chili.", 1, "Per una decisione presa sul momento si usa \"will\": \"I'll take two kilos.\""],
+        ["Too expensive, give me cheaper.", "Troppo caro, dammi più economico.", 0, "Scortese. Se vuoi trattare: \"Could you do a better price if I buy more?\""]] },
+      { npc: ["Anything else for you?", "Le serve altro?"], opts: [
+        ["Could I also have some apples? About half a kilo.", "Potrei avere anche delle mele? Circa mezzo chilo.", 2, "\"About\" significa \"circa\". Perfetto."],
+        ["That's all, thanks.", "È tutto, grazie.", 2, "Formula fissa per chiudere un acquisto."],
+        ["No more.", "Niente più.", 0, "Suona brusco. Si dice \"That's all, thanks\" o \"No, that's everything.\""]] },
+      { npc: ["Right, that comes to six pounds fifty, please.", "Bene, sono sei sterline e cinquanta."], opts: [
+        ["Sorry, do you take card?", "Scusi, accettate carte?", 2, "\"Do you take card?\" significa \"accettate la carta?\""],
+        ["Here's a ten-pound note.", "Ecco una banconota da dieci sterline.", 2, "Perfetto. \"Note\" = banconota (in USA: \"bill\")."],
+        ["Six fifty? Is a lot.", "Sei e cinquanta? È tanto.", 0, "Manca il soggetto: \"It's a lot!\" In inglese il soggetto non si può omettere."]] }
+    ],
+    end: ["Cheers! Here's your change. Have a good one!", "Grazie! Ecco il resto. Buona giornata!"],
+    phrases: [["How much is this? / How much are these?", "Quanto costa questo? / Quanto costano questi?"], ["I'll take it. / I'll take them.", "Lo prendo. / Li prendo."], ["Could you do a better price?", "Mi può fare un prezzo migliore?"], ["Do you take card?", "Accettate carte?"], ["I'm just looking, thanks.", "Sto solo guardando, grazie."], ["Could I have a bag, please?", "Potrei avere una busta, per favore?"]],
+    idioms: [["it costs an arm and a leg", "costa un occhio della testa"], ["a bargain", "un affare"], ["a rip-off", "una fregatura"], ["cheers", "grazie (informale) oppure salute nel brindisi"]],
+    manners: ["Al mercato si può chiedere uno sconto con gentilezza. Nei negozi normalmente no.", "\"I'm just looking, thanks\" ti permette di curiosare senza pressioni.", "Tieni pronti gli spiccioli: molte bancarelle accettano carte, ma non tutte."] },
+
+  { id: "pub", en: "The Red Lion", it: "Il pub", type: "life", x: 870, y: 135,
+    npc: { name: "Fiona", role: "a friendly local at the pub", roleIt: "una ragazza del posto" },
+    setting: "Sera al pub The Red Lion. È pieno di gente e una ragazza si avvicina al tuo tavolo.",
+    scene: "It is evening at The Red Lion pub. Fiona, a friendly local, sits at the learner's table and they get to know each other with small talk.",
+    steps: [
+      { npc: ["Hi! Mind if I join you? It's packed tonight.", "Ciao! Ti dispiace se mi siedo qui? Stasera è pieno."], opts: [
+        ["Not at all, go ahead!", "Per niente, accomodati!", 2, "Attenzione: alla domanda \"Do you mind…?\" la risposta \"Not at all\" significa SÌ, siediti pure."],
+        ["Sure, sit down.", "Certo, siediti.", 1, "Si capisce, ma la risposta corretta a \"Mind if…?\" è \"Not at all, go ahead!\""],
+        ["Yes, I mind.", "Sì, mi dispiace.", 0, "\"Yes\" a \"Do you mind?\" significa \"sì, mi dà fastidio\"! Per accettare: \"Not at all.\""]] },
+      { npc: ["Thanks! I'm Fiona, by the way. I don't think I've seen you here before.", "Grazie! Io sono Fiona, comunque. Non credo di averti mai visto qui."], opts: [
+        ["Nice to meet you, Fiona. I'm new in town. I'm from Italy.", "Piacere, Fiona. Sono nuovo in città. Vengo dall'Italia.", 2, "Ti sei presentato e hai dato un'informazione: ottimo per continuare."],
+        ["No, it's my first time here.", "No, è la prima volta qui.", 1, "Corretto, ma presentati anche: \"Nice to meet you, I'm…\""],
+        ["Yes. I am Italian person.", "Sì. Sono persona italiana.", 0, "\"Italian\" è già un aggettivo completo: \"I'm Italian\" o \"I'm from Italy\"."]] },
+      { npc: ["Oh, lovely! What do you do for work?", "Che bello! Che lavoro fai?"], opts: [
+        ["I work in sales and planning for a manufacturing company. What about you?", "Lavoro nelle vendite e nella pianificazione per un'azienda di produzione. E tu?", 2, "\"What about you?\" rimanda la domanda: il trucco base per non far morire la conversazione."],
+        ["Sales.", "Vendite.", 1, "Corretto ma corto. Aggiungi qualcosa e chiedi \"What about you?\""],
+        ["I'm working like seller.", "Lavoro come venditore.", 0, "\"Like\" non si usa così: si dice \"I work as a salesperson\" o \"I work in sales\"."]] },
+      { npc: ["Sounds interesting! Can I get you a drink? It's my round.", "Interessante! Ti offro da bere? Tocca a me il giro."], opts: [
+        ["That's very kind of you. I'll get the next one!", "Molto gentile. Il prossimo lo offro io!", 2, "Al pub si offre \"a round\" (un giro) a turno. Offrire il prossimo è quasi d'obbligo."],
+        ["Yes, a beer.", "Sì, una birra.", 1, "Aggiungi \"please\", e magari \"I'll get the next one\"."],
+        ["No, I pay for myself.", "No, pago per me.", 0, "Rifiutare il giro sembra freddo. Se non vuoi bere: \"I'm fine, thanks, but I'll get the next one!\""]] }
+    ],
+    end: ["Deal! Two pints coming up. Cheers!", "Affare fatto! Arrivano due pinte. Salute!"],
+    phrases: [["Mind if I join you?", "Ti dispiace se mi unisco?"], ["What do you do?", "Che lavoro fai?"], ["How long have you lived here?", "Da quanto tempo vivi qui?"], ["What do you get up to at the weekend?", "Cosa fai di solito nel fine settimana?"], ["It's my round.", "Tocca a me offrire il giro."], ["It was really nice talking to you.", "È stato davvero piacevole parlare con te."]],
+    idioms: [["to hit it off", "trovarsi subito in sintonia"], ["to call it a night", "chiudere la serata, andare a casa"], ["to catch up", "rivedersi e aggiornarsi"], ["small talk", "chiacchiere di cortesia"]],
+    manners: ["Nel pub si ordina e si paga al bancone, non al tavolo.", "Il sistema dei \"rounds\": a turno ognuno offre da bere a tutto il gruppo.", "All'inizio evita stipendio, politica e religione. Meglio lavoro, viaggi, sport e meteo."] },
+
+  { id: "hotel", en: "The Millbrook Arms", it: "L'hotel", type: "life", x: 190, y: 320,
+    npc: { name: "Mr Hughes", role: "hotel receptionist", roleIt: "receptionist dell'hotel" },
+    setting: "Arrivi in hotel la sera. Più tardi dovrai segnalare un problema nella tua camera.",
+    scene: "The learner is checking in at the Millbrook Arms hotel and later calls reception to politely complain that the heating in the room is not working.",
+    steps: [
+      { npc: ["Good evening, welcome to the Millbrook Arms. Do you have a reservation?", "Buonasera, benvenuto al Millbrook Arms. Ha una prenotazione?"], opts: [
+        ["Good evening. Yes, I have a booking under the name Rossi.", "Buonasera. Sì, ho una prenotazione a nome Rossi.", 2, "\"Under the name…\" significa \"a nome di…\"."],
+        ["Yes, I booked.", "Sì, ho prenotato.", 1, "Corretto. Aggiungi il nome: \"…under the name Rossi.\""],
+        ["Yes, I have a prenotation.", "Sì, ho una prenotazione.", 0, "\"Prenotation\" non esiste: si dice \"reservation\" o \"booking\"."]] },
+      { npc: ["Ah yes, two nights. Here's your key, room 214. Breakfast is from seven to ten.", "Ah sì, due notti. Ecco la chiave, camera 214. La colazione è dalle 7 alle 10."], opts: [
+        ["Great, thank you. What time is checkout?", "Perfetto, grazie. A che ora è il check-out?", 2, "Domanda utile e naturale."],
+        ["Thanks. Is breakfast included?", "Grazie. La colazione è inclusa?", 2, "Ottima domanda da fare sempre."],
+        ["OK.", "Ok.", 1, "Va bene, ma ringrazia: \"Great, thank you.\""]] },
+      { npc: ["(Later, you call reception.) Reception, how can I help?", "(Più tardi, chiami la reception.) Reception, come posso aiutarla?"], opts: [
+        ["Hi, I'm in room 214. I'm afraid the heating isn't working.", "Salve, sono nella camera 214. Temo che il riscaldamento non funzioni.", 2, "\"I'm afraid…\" ammorbidisce una lamentela. È molto britannico."],
+        ["Hello, there is a problem with the heating.", "Salve, c'è un problema con il riscaldamento.", 1, "Va bene. Aggiungi il numero di camera, e \"I'm afraid…\" per suonare più cortese."],
+        ["The heating is broken. Fix it now!", "Il riscaldamento è rotto. Aggiustatelo subito!", 0, "Troppo aggressivo. In Inghilterra ci si lamenta con cortesia: \"I'm afraid…\", \"Would it be possible…\""]] },
+      { npc: ["I'm so sorry about that. I'll send someone up right away. Or would you like to change rooms?", "Mi dispiace molto. Mando subito qualcuno. Oppure preferisce cambiare camera?"], opts: [
+        ["Changing rooms would be great, if it's not too much trouble.", "Cambiare camera sarebbe perfetto, se non è un disturbo.", 2, "\"If it's not too much trouble\": cortesia al massimo livello."],
+        ["It's fine, just send someone up. Thank you.", "Va bene, mandi pure qualcuno. Grazie.", 2, "Chiaro e gentile."],
+        ["Yes, change.", "Sì, cambio.", 0, "Troppo telegrafico. \"Yes, I'd like to change rooms, please.\""]] }
+    ],
+    end: ["No trouble at all. Have a good night!", "Nessun disturbo. Buonanotte!"],
+    phrases: [["I have a booking under the name…", "Ho una prenotazione a nome…"], ["Is breakfast included?", "La colazione è inclusa?"], ["What time is checkout?", "A che ora è il check-out?"], ["I'm afraid there's a problem with…", "Temo ci sia un problema con…"], ["Would it be possible to have a quieter room?", "Sarebbe possibile avere una camera più tranquilla?"], ["Could I have a late checkout?", "Potrei fare il check-out più tardi?"]],
+    idioms: [["make yourself at home", "fai come se fossi a casa tua"], ["no trouble at all", "nessun disturbo"], ["to sleep like a log", "dormire come un sasso"]],
+    manners: ["Lamentarsi all'inglese: tono calmo, \"I'm afraid…\" e una richiesta concreta.", "\"Would it be possible…?\" è più cortese di \"Can you…?\"", "Gli inglesi raramente alzano la voce: chi lo fa perde credibilità."] },
+
+  { id: "office", en: "Millbrook Trading Co.", it: "L'ufficio", type: "work", x: 480, y: 320,
+    npc: { name: "Sarah Collins", role: "purchasing manager at Millbrook Trading Co., a client", roleIt: "responsabile acquisti, una cliente" },
+    setting: "Riunione con una cliente importante per pianificare le consegne del prossimo trimestre.",
+    scene: "A business meeting: Sarah Collins, purchasing manager of a client company, discusses delivery schedules, lead times and late orders with the learner, who works in sales and planning for a supplier.",
+    steps: [
+      { npc: ["Thanks for coming in. Shall we get started? I'd like to go over the delivery schedule for next quarter.", "Grazie di essere venuto. Iniziamo? Vorrei rivedere il piano consegne del prossimo trimestre."], opts: [
+        ["Of course. Thanks for having me.", "Certo. Grazie dell'invito.", 2, "\"Thanks for having me\" = grazie per avermi accolto/invitato. Molto naturale."],
+        ["Yes, we can begin the meeting.", "Sì, possiamo iniziare la riunione.", 1, "Corretto ma rigido. Meglio \"Sure, let's get started.\""],
+        ["OK, we start.", "Ok, iniziamo.", 0, "Per proporre di iniziare si dice \"Let's start\". \"We start\" è un errore."]] },
+      { npc: ["Our main concern is lead times. Last quarter some orders arrived two weeks late.", "La nostra preoccupazione principale sono i tempi di consegna. Lo scorso trimestre alcuni ordini sono arrivati con due settimane di ritardo."], opts: [
+        ["I understand. That was due to a problem with one of our suppliers, but we've fixed it.", "Capisco. È stato a causa di un problema con un nostro fornitore, ma l'abbiamo risolto.", 2, "\"Due to\" = a causa di. Riconosci il problema e poi dai la soluzione."],
+        ["Yes, sorry for the delay.", "Sì, scusate il ritardo.", 1, "Bene scusarsi, ma spiega anche cosa avete fatto per risolvere."],
+        ["It's not our fault.", "Non è colpa nostra.", 0, "Troppo difensivo. Prima riconosci il problema: \"I understand your concern.\""]] },
+      { npc: ["Good to hear. Could you guarantee delivery within ten working days?", "Bene. Potete garantire la consegna entro dieci giorni lavorativi?"], opts: [
+        ["We can commit to twelve working days, and ten for urgent orders. Would that work for you?", "Possiamo impegnarci su dodici giorni lavorativi, e dieci per gli ordini urgenti. Le andrebbe bene?", 2, "Controproposta e domanda di verifica: tecnica di negoziazione perfetta."],
+        ["I'll need to check with my team and get back to you.", "Devo verificare con il mio team e le faccio sapere.", 2, "\"Get back to you\" = ricontattarti. Frase ottima per prendere tempo."],
+        ["Ten days is impossible.", "Dieci giorni è impossibile.", 0, "Un \"no\" secco chiude la trattativa. Proponi sempre un'alternativa."]] },
+      { npc: ["That sounds reasonable. Can you send me everything in writing?", "Mi sembra ragionevole. Mi può mandare tutto per iscritto?"], opts: [
+        ["Absolutely. I'll email you a summary by the end of the day.", "Assolutamente. Le mando un riepilogo via email entro fine giornata.", 2, "\"By the end of the day\" = entro fine giornata. Una scadenza chiara dà fiducia."],
+        ["Yes, I send you email.", "Sì, le mando email.", 1, "Per una promessa si usa \"will\": \"I'll send you an email.\""],
+        ["Yes, maybe tomorrow or later.", "Sì, forse domani o dopo.", 0, "Troppo vago. Nel lavoro dai sempre una scadenza precisa."]] }
+    ],
+    end: ["Perfect. Thanks, this was very productive. Let's keep in touch.", "Perfetto. Grazie, è stato molto produttivo. Restiamo in contatto."],
+    phrases: [["Shall we get started?", "Iniziamo?"], ["Could you clarify what you mean by…?", "Potrebbe chiarire cosa intende con…?"], ["Let me make sure I understand: …", "Vediamo se ho capito bene: …"], ["I see your point, but…", "Capisco il suo punto di vista, però…"], ["Would that work for you?", "Le andrebbe bene?"], ["I'll get back to you by Friday.", "Le faccio sapere entro venerdì."], ["Let's touch base next week.", "Sentiamoci la settimana prossima."]],
+    idioms: [["to be on the same page", "essere allineati, d'accordo"], ["to touch base", "sentirsi brevemente per aggiornarsi"], ["a ballpark figure", "una cifra indicativa"], ["a win-win", "una soluzione vantaggiosa per tutti"], ["to think outside the box", "pensare in modo creativo"]],
+    manners: ["Le riunioni spesso iniziano con due minuti di small talk prima di entrare nel merito.", "Il disaccordo è indiretto: \"I'm not sure that would work\" spesso vuol dire \"no\".", "Puntualità: anche 5 minuti di ritardo richiedono scuse e un messaggio."] },
+
+  { id: "fair", en: "Trade Fair", it: "La fiera", type: "work", x: 790, y: 320,
+    npc: { name: "David Okafor", role: "buyer for a UK retail chain, visiting a trade fair stand", roleIt: "buyer di una catena di negozi" },
+    setting: "Sei allo stand della tua azienda in una fiera. Un buyer si ferma a parlare con te.",
+    scene: "At a trade fair, David Okafor, a buyer for a UK retail chain, stops at the learner's company stand. The learner pitches their company, answers questions about prices and lead times, and arranges a follow-up.",
+    steps: [
+      { npc: ["Hi there. So, what's your company all about?", "Salve. Allora, di cosa si occupa la vostra azienda?"], opts: [
+        ["We produce packaging for food retailers. Can I tell you a bit about what we offer?", "Produciamo imballaggi per la grande distribuzione alimentare. Posso raccontarle cosa offriamo?", 2, "Chiaro, concreto e con una domanda che coinvolge l'interlocutore."],
+        ["We make packaging.", "Facciamo imballaggi.", 1, "Corretto ma corto. Aggiungi per chi lavorate e cosa vi distingue."],
+        ["We are the best company in Italy.", "Siamo la migliore azienda d'Italia.", 0, "Troppa autopromozione: gli inglesi preferiscono fatti concreti e un tono modesto."]] },
+      { npc: ["Interesting. We're actually looking for a new supplier. What makes you different?", "Interessante. In realtà stiamo cercando un nuovo fornitore. Cosa vi rende diversi?"], opts: [
+        ["Our lead times are short, and we can customise orders in small quantities.", "I nostri tempi di consegna sono brevi e possiamo personalizzare ordini anche in piccole quantità.", 2, "Due vantaggi concreti: molto convincente."],
+        ["Price, quality, everything.", "Prezzo, qualità, tutto.", 1, "Generico. Dai uno o due esempi concreti."],
+        ["Because we are different.", "Perché siamo diversi.", 0, "Non risponde alla domanda. Spiega in cosa siete diversi."]] },
+      { npc: ["Sounds good. What sort of price range are we talking about?", "Sembra interessante. Di che fascia di prezzo parliamo?"], opts: [
+        ["It depends on volumes, but I can give you a ballpark figure today and a detailed quote next week.", "Dipende dai volumi, ma posso darle una cifra indicativa oggi e un preventivo dettagliato la settimana prossima.", 2, "\"Ballpark figure\" = stima indicativa; \"quote\" = preventivo."],
+        ["Our prices are very competitive.", "I nostri prezzi sono molto competitivi.", 1, "Buona parola, ma offri anche un preventivo concreto."],
+        ["It's cheap.", "È economico.", 0, "Evita \"cheap\": vuol dire economico ma anche scadente. Usa \"competitive\" o \"good value\"."]] },
+      { npc: ["Great. Here's my card. Let's set up a call next week.", "Ottimo. Ecco il mio biglietto. Fissiamo una call la settimana prossima."], opts: [
+        ["Thanks, here's mine. I'll drop you an email on Monday to arrange a time.", "Grazie, ecco il mio. Le scrivo lunedì per fissare un orario.", 2, "\"Drop someone an email\" = mandare due righe. Follow-up preciso."],
+        ["Okay, call me.", "Ok, mi chiami.", 1, "Meglio prendere tu l'iniziativa: \"I'll drop you an email.\""],
+        ["Why next week? Now is better.", "Perché la prossima settimana? Ora è meglio.", 0, "Troppo insistente: rispetta i tempi del cliente."]] }
+    ],
+    end: ["Brilliant. Lovely to meet you. Enjoy the rest of the fair!", "Benissimo. Piacere di averla conosciuta. Buona continuazione in fiera!"],
+    phrases: [["What brings you to the fair?", "Cosa la porta in fiera?"], ["Let me tell you a bit about what we do.", "Le racconto brevemente cosa facciamo."], ["What sort of volumes are you looking at?", "Su che volumi state ragionando?"], ["Could I take your card?", "Posso avere il suo biglietto da visita?"], ["I'll drop you an email.", "Le mando due righe via email."], ["It was great to meet you.", "È stato un piacere conoscerla."]],
+    idioms: [["to pitch", "presentare un prodotto o un'idea per venderlo"], ["to seal the deal", "chiudere l'affare"], ["to get a foot in the door", "ottenere un primo contatto"], ["good value for money", "un buon rapporto qualità-prezzo"]],
+    manners: ["La modestia paga: \"We're quite good at…\" suona meglio di \"We're the best\".", "Fai il follow-up entro 48 ore, finché si ricordano di te.", "Lo scambio di biglietti da visita è informale: nessun rituale particolare."] },
+
+  { id: "phone", en: "The Phone Box", it: "La telefonata", type: "work", x: 330, y: 505,
+    npc: { name: "Mark Jones", role: "logistics coordinator at a supplier", roleIt: "coordinatore logistica di un fornitore" },
+    setting: "Telefoni a un fornitore inglese: un ordine importante è in ritardo e devi riorganizzare il piano.",
+    scene: "A phone call: the learner calls Mark Jones, logistics coordinator at a UK supplier, because order 4471 is late. They discuss the delay, a new delivery date and tracking details.",
+    steps: [
+      { npc: ["Hello, Mark Jones speaking.", "Pronto, sono Mark Jones."], opts: [
+        ["Hi Mark, I'm calling from Rossi Ltd in Italy. Have you got a minute?", "Ciao Mark, chiamo da Rossi Ltd in Italia. Hai un minuto?", 2, "Al telefono ci si presenta con \"This is…\" o \"I'm calling from…\", e si chiede se è un buon momento."],
+        ["Hi, I need to talk about the order.", "Ciao, devo parlare dell'ordine.", 1, "Prima presentati e chiedi se è un buon momento."],
+        ["Hello, I am Rossi Ltd.", "Pronto, sono Rossi Ltd.", 0, "Al telefono si dice \"This is… from Rossi Ltd\" oppure \"I'm calling from…\"."]] },
+      { npc: ["Sure, what can I do for you?", "Certo, cosa posso fare per te?"], opts: [
+        ["I'm calling about order 4471. It was due on Monday, but it hasn't arrived yet.", "Chiamo per l'ordine 4471. Era previsto per lunedì, ma non è ancora arrivato.", 2, "\"Was due\" = era previsto. \"Hasn't arrived yet\" = non è ancora arrivato."],
+        ["Where is my order?", "Dov'è il mio ordine?", 1, "Diretto. Specifica numero d'ordine e data prevista."],
+        ["The order don't arrive.", "L'ordine non arriva.", 0, "Si dice \"The order hasn't arrived\": present perfect e terza persona."]] },
+      { npc: ["Let me check… Yes, I'm afraid there's been a delay at the port. It should arrive by Thursday.", "Controllo… Sì, purtroppo c'è stato un ritardo al porto. Dovrebbe arrivare entro giovedì."], opts: [
+        ["Thursday works, but could you send me the tracking details?", "Giovedì va bene, ma potresti mandarmi i dati di tracciamento?", 2, "Accetti e chiedi una garanzia concreta: ottimo per pianificare."],
+        ["Sorry, could you repeat that? The line isn't very good.", "Scusa, puoi ripetere? La linea non è buona.", 2, "Frase salvavita nelle telefonate."],
+        ["Thursday is too late, this is unacceptable!", "Giovedì è troppo tardi, è inaccettabile!", 0, "Spiega il problema in modo professionale: \"That's a bit tight for us. Is there any way to speed it up?\""]] },
+      { npc: ["Of course. I'll email you the tracking number right away. Anything else?", "Certo. Ti mando subito il numero di tracciamento via email. Altro?"], opts: [
+        ["That's everything, thanks. Could you keep me updated if anything changes?", "È tutto, grazie. Mi tieni aggiornato se cambia qualcosa?", 2, "\"Keep me updated\" = tienimi aggiornato."],
+        ["No, that's all. Thanks for your help, Mark. Speak soon!", "No, è tutto. Grazie dell'aiuto, Mark. A presto!", 2, "Chiusura cordiale e professionale."],
+        ["No. Bye.", "No. Ciao.", 1, "Corretto ma freddo: ringrazia sempre."]] }
+    ],
+    end: ["Will do. Bye for now!", "Senz'altro. Ciao, a presto!"],
+    phrases: [["Hello, this is Anna from Rossi Ltd.", "Pronto, sono Anna di Rossi Ltd."], ["Is now a good time?", "È un buon momento?"], ["I'm calling about…", "Chiamo per…"], ["Could you speak up a bit, please?", "Potrebbe parlare un po' più forte?"], ["Sorry, you're breaking up.", "Scusa, la linea va e viene."], ["Could you spell that, please?", "Me lo può fare lo spelling?"], ["So, just to confirm…", "Allora, solo per conferma…"]],
+    idioms: [["to keep someone in the loop", "tenere qualcuno aggiornato"], ["to chase up", "sollecitare"], ["to get the ball rolling", "avviare le cose"], ["ASAP (as soon as possible)", "il prima possibile"]],
+    manners: ["Al telefono non si dice \"I am Marco\", ma \"This is Marco\".", "Se chiami senza preavviso chiedi sempre \"Is now a good time?\"", "Alla fine riassumi: \"So, just to confirm…\". Evita malintesi."] },
+
+  { id: "pharmacy", en: "The Chemist", it: "La farmacia", type: "life", x: 650, y: 510,
+    npc: { name: "Mrs Green", role: "pharmacist", roleIt: "farmacista" },
+    setting: "Non ti senti bene. Entri in farmacia (in inglese britannico: \"the chemist\").",
+    scene: "The learner is at the chemist's (pharmacy) explaining symptoms to Mrs Green, the pharmacist, who asks questions and gives advice.",
+    steps: [
+      { npc: ["Hello, what can I do for you?", "Salve, cosa posso fare per lei?"], opts: [
+        ["Hi, I've got a bad headache and a sore throat.", "Salve, ho un forte mal di testa e mal di gola.", 2, "\"I've got a…\" è il modo naturale per descrivere i sintomi."],
+        ["I have pain in the head.", "Ho dolore alla testa.", 1, "Si dice semplicemente \"I have a headache\"."],
+        ["I am sick of throat.", "Sono malato di gola.", 0, "Si dice \"I've got a sore throat\". Attenzione: \"I'm sick of…\" significa \"sono stufo di…\"!"]] },
+      { npc: ["Oh dear. How long have you had it?", "Oh, povero. Da quanto tempo ce l'ha?"], opts: [
+        ["Since yesterday morning.", "Da ieri mattina.", 2, "\"Since\" + momento preciso."],
+        ["For two days.", "Da due giorni.", 2, "\"For\" + durata."],
+        ["I have it from yesterday.", "Ce l'ho da ieri.", 0, "Si dice \"I've had it since yesterday\". \"Da\" si traduce con \"since\" o \"for\"."]] },
+      { npc: ["Any allergies? And are you taking any other medication?", "Allergie? E sta prendendo altri farmaci?"], opts: [
+        ["No allergies, and I'm not taking anything else.", "Nessuna allergia, e non prendo altro.", 2, "Hai risposto a entrambe le domande."],
+        ["No.", "No.", 1, "Ti ha fatto due domande: rispondi a entrambe."],
+        ["I'm allergic at penicillin.", "Sono allergico alla penicillina.", 1, "Preposizione: \"allergic to penicillin\"."]] },
+      { npc: ["Take these twice a day after meals. If you don't feel better in three days, see a doctor.", "Prenda queste due volte al giorno dopo i pasti. Se tra tre giorni non sta meglio, vada da un medico."], opts: [
+        ["Twice a day after meals. Got it, thank you!", "Due volte al giorno dopo i pasti. Capito, grazie!", 2, "Ripetere le istruzioni è un'ottima abitudine."],
+        ["Sorry, how many times a day?", "Scusi, quante volte al giorno?", 2, "Giusto chiedere conferma."],
+        ["OK, I take two.", "Ok, ne prendo due.", 0, "\"Twice a day\" significa \"due volte al giorno\", non \"due pastiglie\"."]] }
+    ],
+    end: ["You're welcome. Get well soon!", "Prego. Guarisca presto!"],
+    phrases: [["I've got a headache / a cold / a temperature.", "Ho mal di testa / il raffreddore / la febbre."], ["I don't feel very well.", "Non mi sento molto bene."], ["Do I need a prescription?", "Serve la ricetta?"], ["How often should I take it?", "Ogni quanto lo devo prendere?"], ["Does it make you drowsy?", "Dà sonnolenza?"]],
+    idioms: [["to feel under the weather", "sentirsi poco bene"], ["get well soon", "guarisci presto"], ["as right as rain", "in perfetta forma"]],
+    manners: ["Il farmacista dà consigli gratuiti: chiedi pure prima di andare dal medico.", "\"Chemist\" (UK) e \"pharmacy\" (USA e UK) significano la stessa cosa.", "\"Temperature\" si usa anche per dire \"febbre\": \"I've got a temperature.\""] }
+];
+
+const FEMALE = { cafe: true, pub: true, office: true, pharmacy: true };
+const GREET = {
+  station: ["Hello there! Need any help with tickets?", "Salve! Le serve aiuto con i biglietti?"],
+  cafe: ["Morning, love! Fancy a coffee?", "Buongiorno, caro! Ti va un caffè?"],
+  market: ["Fresh fruit and veg! Come and have a look!", "Frutta e verdura fresca! Venga a dare un'occhiata!"],
+  pub: ["Hiya! Fancy a drink? Come and join me!", "Ciao! Ti va qualcosa da bere? Vieni a sederti!"],
+  hotel: ["Good afternoon! Welcome to the Millbrook Arms.", "Buon pomeriggio! Benvenuto al Millbrook Arms."],
+  office: ["Ah, hello! You must be here for the meeting.", "Ah, salve! Lei dev'essere qui per la riunione."],
+  fair: ["Hi there! Is this your company's stand?", "Salve! È lo stand della vostra azienda?"],
+  phone: ["Hello! I'm Mark from logistics. Have you got a minute?", "Salve! Sono Mark della logistica. Ha un minuto?"],
+  pharmacy: ["Hello! Are you feeling alright?", "Salve! Si sente bene?"]
+};
+const PASSING = [["Morning!", "Buongiorno!"], ["Hiya!", "Ciao!"], ["Lovely day, isn't it?", "Bella giornata, vero?"], ["Alright?", "Ciao, tutto bene?"], ["Afternoon!", "Buon pomeriggio!"], ["Sorry, excuse me!", "Scusi, permesso!"], ["Nice weather today!", "Bel tempo oggi!"]];
+// NPC positions in metres, facing angle (0 = towards +z)
+const SPOTS = {
+  station: [-65.6, -15, Math.PI / 2], cafe: [-25.8, -5.4, 0], market: [-11.2, 21, Math.PI / 2], pub: [37.6, -5.4, 0],
+  hotel: [32.5, 5.4, Math.PI], office: [55.6, -30, -Math.PI / 2], fair: [55.6, 30, -Math.PI / 2], phone: [3.4, -5.4, 0], pharmacy: [-40.4, 5.4, Math.PI]
+};
+const LOOKS = {
+  station: { skin: 0xB07A55, top: 0x2C4B6B, bottom: 0x22262E, beard: false },
+  market: { skin: 0xF2D2BE, top: 0x3F7440, bottom: 0x5B4632, beard: true },
+  hotel: { skin: 0xF5DACB, top: 0x1D1F24, bottom: 0x1D1F24, beard: false },
+  fair: { skin: 0x7A5238, top: 0x6E7F99, bottom: 0x2B2F38, beard: false },
+  phone: { skin: 0xE8C6AE, top: 0xA33A2E, bottom: 0x2E3A55, beard: true },
+  cafe: { tint: 0xFFE2CC }, pub: { tint: 0xFFFFFF }, office: { tint: 0xDCE6FF }, pharmacy: { tint: 0xF0F0F0 },
+  player: { skin: 0xF0D0B8, top: 0x3F7440, bottom: 0x24384F, beard: false }
+};
+
+const $ = s => document.querySelector(s);
+const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+const KEY = "millbrook3d.v2";
+const MET = (() => { try { return new Set(JSON.parse(localStorage.getItem(KEY)) || []); } catch { return new Set(); } })();
+const saveMet = () => { try { localStorage.setItem(KEY, JSON.stringify([...MET])); } catch {} };
+const updMet = () => { $("#met").textContent = `Persone conosciute: ${MET.size}/${PLACES.length}`; };
+let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const pick = a => a[Math.floor(rnd() * a.length)];
+
+/* ======================= VOICE ======================= */
+const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+const VOICE = { list: [], unlocked: false, works: null, speaking: null, until: 0, pulse: 0, text: "", lipChar: 0, lipT: 0, msPerChar: 65 };
+const FEM = /female|woman|libby|sonia|maisie|serena|kate|martha|hazel|susan|fiona|moira|tessa|karen|samantha|victoria|zira|aria|jenny|emma|amy|stephanie|natasha/i;
+const MALE = /\bmale\b|daniel|ryan|arthur|george|oliver|thomas|rishi|alfie|fred|guy|david|mark|james|brian|elliot|ethan|noah|william/i;
+function loadVoices() { try { VOICE.list = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)); } catch {} }
+if (canSpeak) { loadVoices(); try { speechSynthesis.addEventListener("voiceschanged", loadVoices); } catch {} }
+function quality(v) { return (/natural|online|neural|premium|enhanced/i.test(v.name) ? 4 : 0) + (/google/i.test(v.name) ? 2 : 0) + (/en[-_]GB/i.test(v.lang) ? 3 : 0); }
+function pickVoice(female, idx) {
+  if (!VOICE.list.length) loadVoices();
+  const pool = VOICE.list.slice().sort((a, b) => quality(b) - quality(a));
+  const sex = pool.filter(v => female ? FEM.test(v.name) && !/\bmale\b/i.test(v.name) : MALE.test(v.name) && !/female/i.test(v.name));
+  const best = (sex.length ? sex : pool).filter((v, _, arr) => quality(v) >= quality(arr[0]) - 3);
+  return best.length ? best[idx % best.length] : null;
+}
+function setVoiceChip(state) {
+  const c = $("#voice-chip"); c.classList.toggle("warn", state !== "ok");
+  c.textContent = "";
+  if (state === "ok") c.textContent = "Voce attiva";
+  else if (state === "none") c.textContent = "Questa app non supporta la voce: apri il link in Chrome, Edge o Safari";
+  else if (state === "silent") { c.append("La voce non parte. Alza il volume e togli il silenzioso. "); const b = el("button", null, "Riprova"); b.type = "button"; b.onclick = () => speak("Hello! Can you hear me?", { female: true }); c.append(b); }
+  else c.textContent = "Voce: tocca lo schermo per attivarla";
+}
+setVoiceChip(canSpeak ? "wait" : "none");
+function unlockSpeech() {
+  if (VOICE.unlocked) return;
+  VOICE.unlocked = true;
+  if (!canSpeak) return;
+  try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; u.lang = "en-GB"; speechSynthesis.speak(u); } catch {}
+}
+addEventListener("pointerdown", unlockSpeech, true);
+addEventListener("keydown", unlockSpeech, true);
+let speakSeq = 0;
+function speak(text, o = {}) {
+  if (!text) { if (o.onend) o.onend(); return; }
+  const clean = text.replace(/\(.*?\)/g, "").replace(/[…]/g, ",").trim();
+  const words = clean.split(/\s+/).length;
+  const rate = o.slow ? 0.72 : o.coach ? 0.86 : 0.95;
+  const est = (words * 340 + 500) / rate;
+  VOICE.speaking = o.who || null;
+  VOICE.until = performance.now() + est;
+  if (o.who) { VOICE.text = clean; VOICE.lipChar = 0; VOICE.lipT = performance.now(); VOICE.msPerChar = 62 / rate; }
+  const my = ++speakSeq;
+  let ended = false;
+  const finish = () => { if (ended) return; ended = true; if (my === speakSeq) { VOICE.until = performance.now() + 80; if (o.onend) o.onend(); } };
+  if (!canSpeak) { setTimeout(finish, est); return; }
+  const go = () => {
+    if (my !== speakSeq) return;
+    try {
+      const u = new SpeechSynthesisUtterance(clean);
+      u.lang = "en-GB"; u.rate = rate; u.volume = 1;
+      const v = pickVoice(!!o.female, o.vi || 0); if (v) { u.voice = v; u.lang = v.lang; }
+      u.pitch = o.pitch || 1;
+      let started = false;
+      u.onstart = () => { started = true; VOICE.lipT = performance.now(); VOICE.lipChar = 0; VOICE.works = true; setVoiceChip("ok"); VOICE.speaking = o.who || null; VOICE.until = performance.now() + 60000; };
+      u.onboundary = e => { VOICE.pulse = performance.now(); if (e && e.charIndex != null && my === speakSeq) { VOICE.lipChar = e.charIndex; VOICE.lipT = performance.now(); } };
+      u.onend = finish; u.onerror = finish;
+      speechSynthesis.speak(u);
+      try { speechSynthesis.resume(); } catch {}
+      setTimeout(() => { if (!started && my === speakSeq && !speechSynthesis.speaking) { if (VOICE.works !== true) setVoiceChip("silent"); finish(); } }, 2500);
+      setTimeout(() => { if (my === speakSeq && !speechSynthesis.speaking) finish(); }, est + 5000); // some browsers never fire onend
+    } catch { setVoiceChip("silent"); finish(); }
+  };
+  try {
+    if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(go, 90); } else go();
+  } catch { go(); }
+}
+function stopSpeaking() { speakSeq++; VOICE.until = 0; try { if (canSpeak) speechSynthesis.cancel(); } catch {} }
+const isSpeaking = who => VOICE.speaking === who && performance.now() < VOICE.until;
+
+/* ======================= RENDERER & SKY ======================= */
+const app = $("#app");
+const MOBILE = matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ antialias: !MOBILE || (devicePixelRatio || 1) < 2, powerPreference: "high-performance" }); }
+catch (e) { $("#load-msg").textContent = "Il tuo dispositivo non riesce a mostrare il 3D."; throw e; }
+renderer.domElement.className = "gl";
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, MOBILE ? 1.25 : 1.5));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const HORIZON = 0xD6E8F2;
+scene.fog = new THREE.Fog(HORIZON, 90, 270);
+const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 900);
+function resize() { const w = app.clientWidth, h = app.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener("resize", resize); resize();
+
+const SUN_DIR = new THREE.Vector3(0.55, 0.75, 0.35).normalize();
+const sky = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color(0x3F7FCB) }, mid: { value: new THREE.Color(0x8FBDE6) }, bot: { value: new THREE.Color(HORIZON) }, sun: { value: SUN_DIR } },
+  vertexShader: "varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+  fragmentShader: "uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform vec3 sun; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.0 ? mix(mid, top, smoothstep(0.0, 0.6, h)) : bot; c = mix(bot, c, smoothstep(-0.02, 0.12, h)); float s = max(dot(normalize(vP), sun), 0.0); c += vec3(1.0,0.95,0.8) * (pow(s, 600.0) * 1.5 + pow(s, 12.0) * 0.18); gl_FragColor = vec4(c, 1.0); }"
+}));
+scene.add(sky);
+// image-based lighting from the sky: soft, natural light and reflections on skin, clothes and windows
+{ const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene();
+  envScene.add(new THREE.Mesh(sky.geometry, sky.material));
+  const g = new THREE.Mesh(new THREE.CircleGeometry(590, 32), new THREE.MeshBasicMaterial({ color: 0x6E7A5A })); g.rotation.x = -Math.PI / 2; g.position.y = -20; envScene.add(g);
+  scene.environment = pmrem.fromScene(envScene, 0.04).texture; pmrem.dispose(); }
+
+// soft clouds
+function cloudTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d");
+  for (let i = 0; i < 26; i++) {
+    const x = 50 + rnd() * 156, y = 95 + rnd() * 70, r = 26 + rnd() * 44;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, "rgba(255,255,255,.85)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+}
+const clouds = [];
+{ const ct = cloudTexture(); for (let i = 0; i < 16; i++) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: 0.9 }));
+  const a = rnd() * Math.PI * 2, r = 180 + rnd() * 260; s.position.set(Math.cos(a) * r, 90 + rnd() * 60, Math.sin(a) * r); s.scale.set(140 + rnd() * 90, 60 + rnd() * 30, 1); scene.add(s); clouds.push(s);
+} }
+
+const hemi = new THREE.HemisphereLight(0xCFE6FF, 0x5E6B45, 0.35); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xFFF1DC, 1.9);
+sun.castShadow = true; sun.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+Object.assign(sun.shadow.camera, MOBILE ? { left: -28, right: 28, top: 28, bottom: -28, near: 1, far: 220 } : { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 220 });
+scene.add(sun); scene.add(sun.target);
+
+/* ======================= TEXTURES ======================= */
+const TEX = {};
+function makeTex(name, size, draw) {
+  const c = document.createElement("canvas"); c.width = c.height = size; const g = c.getContext("2d");
+  draw(g, size);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); TEX[name] = t; return t;
+}
+const hsl = (h, s, l) => `hsl(${h},${s}%,${l}%)`;
+function noise(g, S, n, a, light = true) { for (let i = 0; i < n; i++) { g.fillStyle = `rgba(${light ? "255,255,255" : "0,0,0"},${rnd() * a})`; g.fillRect(rnd() * S, rnd() * S, 1 + rnd() * 2, 1 + rnd() * 2); } }
+function brick(name, h, s, l, mortar) {
+  makeTex(name, 512, (g, S) => {
+    g.fillStyle = mortar; g.fillRect(0, 0, S, S);
+    const rows = 26, bw = S / 9, bh = S / rows;
+    for (let r = 0; r < rows; r++) for (let c = -1; c < 10; c++) {
+      const x = c * bw + (r % 2 ? bw / 2 : 0), y = r * bh;
+      g.fillStyle = hsl(h + (rnd() - .5) * 8, s + (rnd() - .5) * 12, l + (rnd() - .5) * 12);
+      g.fillRect(x + 1.5, y + 1.5, bw - 3, bh - 3);
+    }
+    noise(g, S, 5000, .12, false); noise(g, S, 2000, .1);
+  });
+}
+brick("brickRed", 10, 48, 38, "#B9AE9D");
+brick("brickYellow", 38, 38, 62, "#C9C1B0");
+brick("brickBrown", 18, 35, 30, "#A89C8A");
+function plaster(name, col) { makeTex(name, 256, (g, S) => { g.fillStyle = col; g.fillRect(0, 0, S, S); for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * .035})`; g.beginPath(); g.arc(rnd() * S, rnd() * S, 10 + rnd() * 40, 0, 7); g.fill(); } noise(g, S, 2500, .06, false); }); }
+plaster("plasterCream", "#EDE3CC"); plaster("plasterWhite", "#F1EFE8"); plaster("plasterBlue", "#C9DCE3"); plaster("plasterPink", "#EBCFC6"); plaster("plasterSage", "#D3DCC4");
+makeTex("stone", 512, (g, S) => {
+  g.fillStyle = "#9C9584"; g.fillRect(0, 0, S, S);
+  const rows = 8; let y = 0;
+  for (let r = 0; r < rows; r++) { const h = S / rows; let x = -rnd() * 60; while (x < S) { const w = 50 + rnd() * 70; g.fillStyle = hsl(40 + rnd() * 10, 10 + rnd() * 8, 62 + rnd() * 12); g.fillRect(x + 2, y + 2, w - 4, h - 4); x += w; } y += h; }
+  noise(g, S, 6000, .1, false); noise(g, S, 3000, .1);
+});
+function roofTex(name, h, s, l) {
+  makeTex(name, 512, (g, S) => {
+    g.fillStyle = hsl(h, s, l - 10); g.fillRect(0, 0, S, S);
+    const rows = 16, tw = S / 12, th = S / rows;
+    for (let r = 0; r < rows; r++) for (let c = -1; c < 13; c++) {
+      const x = c * tw + (r % 2 ? tw / 2 : 0), y = r * th;
+      g.fillStyle = hsl(h + (rnd() - .5) * 6, s + (rnd() - .5) * 8, l + (rnd() - .5) * 10); g.fillRect(x + 1, y, tw - 2, th - 3);
+      g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(x + 1, y + th - 4, tw - 2, 3);
+    }
+    noise(g, S, 4000, .1, false);
+  });
+}
+roofTex("roofSlate", 210, 10, 32); roofTex("roofRed", 12, 45, 40); roofTex("roofBrown", 25, 30, 30);
+makeTex("asphalt", 512, (g, S) => { g.fillStyle = "#4A4C4F"; g.fillRect(0, 0, S, S); noise(g, S, 30000, .18, false); noise(g, S, 20000, .12); for (let i = 0; i < 12; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * .08})`; g.beginPath(); g.arc(rnd() * S, rnd() * S, 20 + rnd() * 70, 0, 7); g.fill(); } });
+makeTex("pavement", 512, (g, S) => {
+  g.fillStyle = "#8D8A84"; g.fillRect(0, 0, S, S); const n = 5, w = S / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { g.fillStyle = hsl(35, 6, 66 + (rnd() - .5) * 8); g.fillRect(i * w + 2, j * w + 2, w - 4, w - 4); }
+  noise(g, S, 12000, .1, false); noise(g, S, 6000, .1);
+});
+makeTex("cobble", 512, (g, S) => {
+  g.fillStyle = "#5E5A52"; g.fillRect(0, 0, S, S); const n = 16, w = S / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = i * w + (j % 2 ? w / 2 : 0) + (rnd() - .5) * 3, y = j * w + (rnd() - .5) * 3; g.fillStyle = hsl(30 + rnd() * 15, 8 + rnd() * 8, 52 + rnd() * 16); g.beginPath(); g.ellipse(x, y, w * .44, w * .4, rnd(), 0, 7); g.fill(); }
+  noise(g, S, 8000, .1, false);
+});
+makeTex("grass", 512, (g, S) => {
+  g.fillStyle = "#5F8B3E"; g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 26000; i++) { g.strokeStyle = hsl(85 + rnd() * 25, 40 + rnd() * 20, 26 + rnd() * 22); g.lineWidth = 1; const x = rnd() * S, y = rnd() * S; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - .5) * 3, y - 2 - rnd() * 4); g.stroke(); }
+  for (let i = 0; i < 18; i++) { g.fillStyle = `rgba(${rnd() > .5 ? "40,60,20" : "160,170,90"},${rnd() * .08})`; g.beginPath(); g.arc(rnd() * S, rnd() * S, 30 + rnd() * 80, 0, 7); g.fill(); }
+});
+makeTex("gravel", 256, (g, S) => { g.fillStyle = "#B7A988"; g.fillRect(0, 0, S, S); noise(g, S, 9000, .2, false); noise(g, S, 6000, .2); });
+makeTex("wood", 256, (g, S) => { g.fillStyle = "#7A5233"; g.fillRect(0, 0, S, S); for (let i = 0; i < 8; i++) { g.fillStyle = hsl(26, 40, 26 + rnd() * 10); g.fillRect(i * S / 8 + 1, 0, S / 8 - 2, S); } for (let i = 0; i < 300; i++) { g.strokeStyle = "rgba(0,0,0,.12)"; const x = rnd() * S; g.beginPath(); g.moveTo(x, 0); g.lineTo(x + (rnd() - .5) * 6, S); g.stroke(); } });
+makeTex("concrete", 256, (g, S) => { g.fillStyle = "#B9B6AE"; g.fillRect(0, 0, S, S); noise(g, S, 8000, .1, false); noise(g, S, 4000, .1); g.fillStyle = "rgba(0,0,0,.15)"; g.fillRect(0, S - 2, S, 2); });
+makeTex("awning", 128, (g, S) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#F4F1E8" : "#2F6B4F"; g.fillRect(i * S / 8, 0, S / 8, S); } });
+makeTex("awningRed", 128, (g, S) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#F4F1E8" : "#B0372B"; g.fillRect(i * S / 8, 0, S / 8, S); } });
+makeTex("awningBlue", 128, (g, S) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#F4F1E8" : "#2C5B7B"; g.fillRect(i * S / 8, 0, S / 8, S); } });
+
+/* ======================= MATERIALS ======================= */
+const M = {}, TILE = {};
+function std(name, o, tile = 0) { M[name] = new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.9, metalness: 0 }, o)); TILE[name] = tile; }
+["brickRed", "brickYellow", "brickBrown"].forEach(n => std(n, { map: TEX[n] }, 2.2));
+["plasterCream", "plasterWhite", "plasterBlue", "plasterPink", "plasterSage"].forEach(n => std(n, { map: TEX[n] }, 4));
+std("stone", { map: TEX.stone }, 3.2);
+["roofSlate", "roofRed", "roofBrown"].forEach(n => std(n, { map: TEX[n] }, 2.5));
+std("asphalt", { map: TEX.asphalt, roughness: 0.95 }, 7);
+std("pavement", { map: TEX.pavement }, 3);
+std("cobble", { map: TEX.cobble }, 2.6);
+std("grass", { map: TEX.grass, roughness: 1 }, 7);
+std("gravel", { map: TEX.gravel }, 3);
+std("wood", { map: TEX.wood }, 1.6);
+std("concrete", { map: TEX.concrete }, 3.5);
+std("awning", { map: TEX.awning, side: THREE.DoubleSide }, 0);
+std("awningRed", { map: TEX.awningRed, side: THREE.DoubleSide }, 0);
+std("awningBlue", { map: TEX.awningBlue, side: THREE.DoubleSide }, 0);
+std("frame", { color: 0xF2F0EA, roughness: 0.6 });
+std("glass", { color: 0x27384A, roughness: 0.12, metalness: 0.7, emissive: 0x0E1822 });
+std("glassShop", { color: 0x3B4C55, roughness: 0.1, metalness: 0.5, emissive: 0x3A2E1C });
+std("glassModern", { color: 0x5D88A6, roughness: 0.08, metalness: 0.85, emissive: 0x0D1B26 });
+std("paintBlack", { color: 0x1E2224, roughness: 0.5 });
+std("paintGreen", { color: 0x1F4A35, roughness: 0.5 });
+std("paintNavy", { color: 0x1E3554, roughness: 0.5 });
+std("paintRed", { color: 0xA8251F, roughness: 0.45 });
+std("paintMaroon", { color: 0x5E1F25, roughness: 0.5 });
+std("paintYellow", { color: 0xD9A82B, roughness: 0.5 });
+std("metal", { color: 0x2A2D2F, roughness: 0.45, metalness: 0.6 });
+std("steel", { color: 0x9BA3A8, roughness: 0.35, metalness: 0.8 });
+std("lamp", { color: 0xFFF2C4, emissive: 0xFFDF8A, emissiveIntensity: 0.6 });
+std("white", { color: 0xF2F2EE, roughness: 0.7 });
+std("yellowLine", { color: 0xE3B53A, roughness: 0.7 });
+std("trunk", { color: 0x5A4430 });
+std("leaf1", { color: 0x3E6B2F, flatShading: true });
+std("leaf2", { color: 0x52803A, flatShading: true });
+std("leaf3", { color: 0x2F5A2A, flatShading: true });
+std("hedge", { color: 0x3B6630, flatShading: true });
+std("water", { color: 0x3E6E86, roughness: 0.05, metalness: 0.6 });
+std("chimneyPot", { color: 0xA4553A });
+std("tire", { color: 0x1A1A1A, roughness: 0.8 });
+std("produce1", { color: 0xD33A2C }); std("produce2", { color: 0xE69A2E }); std("produce3", { color: 0x7BAE3A });
+const CAR = [0xB8B8BC, 0x1F2D44, 0x7E1E20, 0xEDEDED, 0x2E3B31, 0x4D5560];
+CAR.forEach((c, i) => std("car" + i, { color: c, roughness: 0.25, metalness: 0.6 }));
+
+/* ======================= GEOMETRY BATCHER ======================= */
+const BATCH = {};
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+function frameOf(x, z, rot) { return { x, z, rot, c: Math.cos(rot), s: Math.sin(rot) }; }
+const WORLD = frameOf(0, 0, 0);
+function place(geom, key, F, lx, ly, lz, rx = 0, ry = 0, rz = 0) {
+  const wx = F.x + lx * F.c + lz * F.s, wz = F.z - lx * F.s + lz * F.c;
+  _e.set(rx, ry + F.rot, rz, "YXZ"); _q.setFromEuler(_e); _p.set(wx, ly, wz); _s.set(1, 1, 1);
+  _m.compose(_p, _q, _s); geom.applyMatrix4(_m);
+  const g = geom.index ? geom.toNonIndexed() : geom;
+  if (!g.attributes.uv) return;
+  (BATCH[key] || (BATCH[key] = [])).push(g);
+}
+function scaleUV(geom, su, sv) { const uv = geom.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); }
+function box(key, w, h, d, F, lx, ly, lz, rx = 0, ry = 0, rz = 0) {
+  const g = new THREE.BoxGeometry(w, h, d); const t = TILE[key];
+  if (t) { const uv = g.attributes.uv; const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]]; for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / t, uv.getY(i) * dims[f][1] / t); } }
+  place(g, key, F, lx, ly, lz, rx, ry, rz);
+}
+function cyl(key, rt, rb, h, seg, F, lx, ly, lz, rx = 0, ry = 0, rz = 0) { place(new THREE.CylinderGeometry(rt, rb, h, seg), key, F, lx, ly, lz, rx, ry, rz); }
+function blob(key, r, F, lx, ly, lz, sy = 1) {
+  const g = new THREE.IcosahedronGeometry(r, 1); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const k = 0.85 + rnd() * 0.3; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * sy, p.getZ(i) * k); }
+  g.computeVertexNormals(); place(g, key, F, lx, ly, lz);
+}
+function tri(key, base, height, F, lx, ly, lz, ry) {
+  const s = new THREE.Shape(); s.moveTo(-base / 2, 0); s.lineTo(base / 2, 0); s.lineTo(0, height); s.lineTo(-base / 2, 0);
+  const g = new THREE.ShapeGeometry(s); const t = TILE[key]; if (t) scaleUV(g, 1 / t, 1 / t);
+  place(g, key, F, lx, ly, lz, 0, ry, 0);
+}
+function flushBatches() {
+  for (const key in BATCH) {
+    const merged = THREE.BufferGeometryUtils.mergeBufferGeometries(BATCH[key]);
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, M[key]);
+    mesh.castShadow = !["asphalt", "grass", "pavement", "cobble", "gravel", "white", "yellowLine", "water"].includes(key);
+    mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; scene.add(mesh);
+  }
+}
+
+/* ======================= WORLD DATA ======================= */
+const colliders = []; // AABBs {x0,x1,z0,z1}
+const circles = [];   // {x,z,r}
+const raised = [];    // pavements, height 0.14
+const greenAreas = [];
+function addAABB(F, w, d, pad = 0) {
+  const hw = w / 2 + pad, hd = d / 2 + pad, ax = Math.abs(F.c) > 0.5 ? hw : hd, az = Math.abs(F.c) > 0.5 ? hd : hw;
+  colliders.push({ x0: F.x - ax, x1: F.x + ax, z0: F.z - az, z1: F.z + az });
+}
+function sign(text, F, lx, ly, lz, w, h, bg = "#1E2224", fg = "#F3E9C8", font = "serif") {
+  const c = document.createElement("canvas"); const ratio = w / h; c.width = 512; c.height = Math.max(64, Math.round(512 / ratio));
+  const g = c.getContext("2d"); g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = "rgba(255,255,255,.25)"; g.lineWidth = 4; g.strokeRect(6, 6, c.width - 12, c.height - 12);
+  g.fillStyle = fg; g.textAlign = "center"; g.textBaseline = "middle";
+  let size = c.height * 0.62; const ff = font === "serif" ? 'Georgia, "Times New Roman", serif' : '"Bricolage Grotesque", system-ui, sans-serif';
+  g.font = `700 ${size}px ${ff}`; while (g.measureText(text).width > c.width - 40 && size > 14) { size -= 2; g.font = `700 ${size}px ${ff}`; }
+  g.fillText(text, c.width / 2, c.height / 2 + 2);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 }));
+  m.position.set(F.x + lx * F.c + lz * F.s, ly, F.z - lx * F.s + lz * F.c); m.rotation.y = F.rot; scene.add(m); return m;
+}
+
+/* ---------- ground, roads ---------- */
+{ const g = new THREE.PlaneGeometry(700, 700); scaleUV(g, 700 / 7, 700 / 7); g.rotateX(-Math.PI / 2); (BATCH.grass || (BATCH.grass = [])).push(g.toNonIndexed()); }
+const ROADS = [ // x0,x1,z0,z1
+  [-140, 140, -4, 4], [-64, -56, -140, 140], [46, 54, -140, 140], [-140, 140, -64, -56], [-140, 140, 56, 64]
+];
+const PAVES = [
+  [-140, 140, -7, -4], [-140, 140, 4, 7], [-67, -64, -140, 140], [-56, -53, -140, 140], [43, 46, -140, 140], [54, 57, -140, 140],
+  [-140, 140, -67, -64], [-140, 140, -56, -53], [-140, 140, 53, 56], [-140, 140, 64, 67]
+];
+ROADS.forEach(([x0, x1, z0, z1]) => box("asphalt", x1 - x0, 0.04, z1 - z0, WORLD, (x0 + x1) / 2, 0.02, (z0 + z1) / 2));
+PAVES.forEach(([x0, x1, z0, z1]) => { box("pavement", x1 - x0, 0.14, z1 - z0, WORLD, (x0 + x1) / 2, 0.07, (z0 + z1) / 2); raised.push([x0, x1, z0, z1]); });
+// road markings: dashed centre lines and UK double yellow lines
+function dashes(x0, x1, z, alongX = true) { for (let t = x0; t < x1; t += 6) { if (alongX) box("white", 3, 0.02, 0.14, WORLD, t + 1.5, 0.045, z); else box("white", 0.14, 0.02, 3, WORLD, z, 0.045, t + 1.5); } }
+dashes(-138, 138, 0); dashes(-138, 138, -60); dashes(-138, 138, 60); dashes(-138, 138, -60, false); dashes(-138, 138, 50, false);
+[-3.75, -3.55, 3.55, 3.75].forEach(z => box("yellowLine", 270, 0.02, 0.1, WORLD, 0, 0.045, z));
+// zebra crossing by the square, with Belisha beacon poles
+for (let i = 0; i < 7; i++) box("white", 0.5, 0.02, 7.6, WORLD, -2.5 + i * 0.9, 0.046, 0);
+[[-3.4, -4.6], [3.4, 4.6]].forEach(([x, z]) => { cyl("paintBlack", 0.06, 0.06, 2.6, 8, WORLD, x, 1.3, z); const b = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 10), new THREE.MeshStandardMaterial({ color: 0xF2A11E, emissive: 0xF29A10, emissiveIntensity: 0.5 })); b.position.set(x, 2.75, z); scene.add(b); circles.push({ x, z, r: 0.2 }); });
+
+/* ---------- town square ---------- */
+box("cobble", 28, 0.12, 28, WORLD, 0, 0.06, 21); raised.push([-14, 14, 7, 35]);
+{ const F = frameOf(3, 26, 0);
+  cyl("stone", 3.2, 3.4, 0.7, 32, F, 0, 0.45, 0); cyl("water", 2.9, 2.9, 0.1, 32, F, 0, 0.78, 0);
+  cyl("stone", 0.5, 0.7, 1.6, 16, F, 0, 1.4, 0); cyl("stone", 1.3, 1.1, 0.3, 24, F, 0, 2.3, 0); cyl("stone", 0.25, 0.35, 1.1, 12, F, 0, 2.9, 0); blob("stone", 0.3, F, 0, 3.6, 0);
+  circles.push({ x: 3, z: 26, r: 3.5 }); }
+// market stalls on the west side of the square
+[14.5, 21, 27.5].forEach((z, i) => {
+  const F = frameOf(-9.6, z, Math.PI / 2);
+  box("wood", 4.4, 0.9, 1.4, F, 0, 0.6, 0); box("wood", 4.6, 0.08, 1.6, F, 0, 1.08, 0);
+  [-2.1, 2.1].forEach(x => [-0.7, 0.7].forEach(zz => box("paintBlack", 0.07, 2.6, 0.07, F, x, 1.4, zz)));
+  box(["awning", "awningRed", "awningBlue"][i], 4.8, 0.06, 2.4, F, 0, 2.75, 0.15, -0.25);
+  for (let k = 0; k < 12; k++) blob(["produce1", "produce2", "produce3"][(k + i) % 3], 0.11, F, -1.9 + (k % 6) * 0.75, 1.22, k < 6 ? -0.3 : 0.3);
+  addAABB(F, 4.6, 1.6, 0.05);
+});
+// benches and trees in the square
+function bench(F, lx, lz, ry = 0) { box("wood", 1.8, 0.08, 0.5, F, lx, 0.55, lz, 0, ry); box("wood", 1.8, 0.45, 0.06, F, lx + Math.sin(ry) * -0.24, 0.85, lz + Math.cos(ry) * -0.24, 0.1, ry); [-0.8, 0.8].forEach(o => box("metal", 0.08, 0.55, 0.45, F, lx + Math.cos(ry) * o, 0.28, lz - Math.sin(ry) * o, 0, ry)); }
+function tree(x, z, s = 1, kind = 0) {
+  const F = frameOf(x, z, rnd() * 6);
+  cyl("trunk", 0.16 * s, 0.26 * s, 3 * s, 7, F, 0, 1.5 * s, 0);
+  if (kind === 1) { place(new THREE.ConeGeometry(1.7 * s, 5 * s, 8), "leaf3", F, 0, 4.2 * s, 0); }
+  else { const L = ["leaf1", "leaf2", "leaf3"]; blob(L[Math.floor(rnd() * 3)], 1.9 * s, F, 0, 3.9 * s, 0); blob(L[Math.floor(rnd() * 3)], 1.4 * s, F, 1.0 * s, 3.4 * s, 0.4 * s); blob(L[Math.floor(rnd() * 3)], 1.4 * s, F, -0.8 * s, 3.5 * s, -0.6 * s); blob(L[Math.floor(rnd() * 3)], 1.2 * s, F, 0.2 * s, 4.9 * s, -0.2 * s); }
+  circles.push({ x, z, r: 0.35 * s });
+}
+[[-11, 10], [11, 10], [11, 32], [-11, 33]].forEach(([x, z]) => tree(x, z, 0.9));
+bench(WORLD, 8.5, 20, -Math.PI / 2); bench(WORLD, 8.5, 31, -Math.PI / 2); bench(WORLD, -2, 32.5, Math.PI);
+colliders.push({ x0: 8, x1: 9.1, z0: 19, z1: 21 }, { x0: 8, x1: 9.1, z0: 30, z1: 32 });
+
+/* ---------- buildings ---------- */
+const WALLS = ["brickRed", "brickYellow", "brickBrown", "plasterCream", "plasterWhite", "plasterBlue", "plasterPink", "plasterSage"];
+const DOORS = ["paintBlack", "paintGreen", "paintNavy", "paintRed", "paintMaroon"];
+function windowAt(F, x, y, z, ww = 1.1, wh = 1.5, glass = "glass") {
+  box(glass, ww, wh, 0.06, F, x, y, z + 0.02);
+  box("frame", ww + 0.16, 0.1, 0.12, F, x, y + wh / 2, z + 0.06); box("frame", ww + 0.16, 0.1, 0.12, F, x, y - wh / 2, z + 0.06);
+  box("frame", 0.1, wh, 0.12, F, x - ww / 2, y, z + 0.06); box("frame", 0.1, wh, 0.12, F, x + ww / 2, y, z + 0.06);
+  box("frame", 0.06, wh, 0.09, F, x, y, z + 0.06); box("frame", ww, 0.06, 0.09, F, x, y + wh * 0.12, z + 0.06);
+  box("stone", ww + 0.35, 0.1, 0.24, F, x, y - wh / 2 - 0.08, z + 0.1);
+}
+function building(o) {
+  const F = frameOf(o.x, o.z, o.rot || 0);
+  const W = o.w, D = o.d || 9, fh = o.fh || 3.1, floors = o.floors || 2, H = floors * fh + 0.3, wall = o.wall || pick(WALLS);
+  const front = D / 2;
+  box(wall, W, H, D, F, 0, H / 2, 0);
+  box("stone", W + 0.04, 0.35, D + 0.04, F, 0, 0.17, 0); // plinth
+  if (o.modern) {
+    for (let f = 0; f < floors; f++) { box("glassModern", W - 0.6, fh - 0.9, 0.08, F, 0, f * fh + fh / 2 + 0.3, front + 0.02); box("concrete", W + 0.1, 0.35, 0.3, F, 0, f * fh + 0.3, front + 0.1); }
+    box("concrete", W + 0.3, 0.6, D + 0.3, F, 0, H + 0.3, 0);
+    for (let x = -W / 2 + 0.3; x <= W / 2 - 0.2; x += 2.4) box("steel", 0.12, H - 0.3, 0.14, F, x, H / 2 + 0.15, front + 0.08);
+  } else {
+    const bays = Math.max(1, Math.round((W - 0.6) / 2.6)), bw = W / bays;
+    const startF = o.shop ? 1 : 0;
+    const doorBay = o.doorBay != null ? o.doorBay : Math.floor(bays / 2);
+    for (let f = startF; f < floors; f++) for (let b = 0; b < bays; b++) {
+      const x = -W / 2 + bw * (b + 0.5);
+      if (f === 0 && b === doorBay && !o.shop) continue;
+      windowAt(F, x, f * fh + fh * 0.55 + 0.2, front, Math.min(1.25, bw * 0.55), f === 0 ? 1.6 : 1.45);
+    }
+    if (!o.shop) {
+      const x = -W / 2 + bw * (doorBay + 0.5), dc = o.door || pick(DOORS);
+      box(dc, 1.0, 2.2, 0.1, F, x, 1.45, front + 0.03);
+      box("frame", 1.3, 0.12, 0.16, F, x, 2.62, front + 0.06); box("frame", 0.12, 2.3, 0.16, F, x - 0.6, 1.47, front + 0.06); box("frame", 0.12, 2.3, 0.16, F, x + 0.6, 1.47, front + 0.06);
+      box("glass", 0.95, 0.35, 0.06, F, x, 2.85, front + 0.02); box("stone", 1.5, 0.18, 0.5, F, x, 0.24, front + 0.25);
+      box("steel", 0.06, 0.06, 0.05, F, x + 0.3, 1.4, front + 0.1);
+    }
+  }
+  if (o.shop) {
+    const sc = o.shopColor || pick(DOORS);
+    box(sc, W - 0.2, 0.75, 0.22, F, 0, fh - 0.3, front + 0.12); // fascia
+    box(sc, 0.3, fh - 0.6, 0.18, F, -W / 2 + 0.25, (fh - 0.6) / 2 + 0.3, front + 0.1); box(sc, 0.3, fh - 0.6, 0.18, F, W / 2 - 0.25, (fh - 0.6) / 2 + 0.3, front + 0.1);
+    box(sc, W - 0.8, 0.55, 0.14, F, 0, 0.6, front + 0.08); // stall riser
+    const dx = W / 2 - 1.0;
+    box("glassShop", W - 2.6, 1.75, 0.06, F, -0.55, 1.78, front + 0.04);
+    for (let x = -W / 2 + 0.6 + (W - 2.6) / 3; x < dx - 1; x += (W - 2.6) / 3) box(sc, 0.08, 1.75, 0.1, F, x - 0.5, 1.78, front + 0.07);
+    box(sc, 0.95, 2.25, 0.1, F, dx, 1.42, front + 0.03); box("glassShop", 0.6, 1.1, 0.06, F, dx, 1.85, front + 0.06);
+    if (o.awning) box(o.awning, W - 0.6, 0.05, 1.6, F, 0, fh - 0.85, front + 0.75, 0.3);
+    if (o.name) sign(o.name, F, 0, fh - 0.3, front + 0.24, W - 0.6, 0.6, o.signBg || "#1E2224", o.signFg || "#F3E9C8");
+  }
+  if (o.roof === "flat" || o.modern) {
+    box("stone", W + 0.1, 0.5, 0.3, F, 0, H + 0.25, front - 0.15); box("stone", W + 0.1, 0.5, 0.3, F, 0, H + 0.25, -front + 0.15);
+  } else {
+    const rh = D * (o.pitch || 0.36), oh = 0.35, slope = Math.hypot(D / 2 + oh, rh), ang = Math.atan2(rh, D / 2);
+    const roof = o.roofMat || "roofSlate";
+    box(roof, W + 0.2, 0.14, slope, F, 0, H + rh / 2 - 0.1, (D / 4 + oh / 2), ang);
+    box(roof, W + 0.2, 0.14, slope, F, 0, H + rh / 2 - 0.1, -(D / 4 + oh / 2), -ang);
+    box("roofSlate", W + 0.25, 0.18, 0.3, F, 0, H + rh, 0);
+    tri(wall, D, rh, F, -W / 2 + 0.001, H, 0, -Math.PI / 2); tri(wall, D, rh, F, W / 2 - 0.001, H, 0, Math.PI / 2);
+    if (o.chimney !== false) [-W / 2 + 0.7, W / 2 - 0.7].forEach(x => { box(wall.startsWith("brick") ? wall : "brickRed", 0.8, 1.6, 1.2, F, x, H + rh * 0.55 + 0.5, -0.6); box("stone", 0.95, 0.12, 1.35, F, x, H + rh * 0.55 + 1.32, -0.6); cyl("chimneyPot", 0.12, 0.14, 0.45, 8, F, x - 0.2, H + rh * 0.55 + 1.6, -0.6); cyl("chimneyPot", 0.12, 0.14, 0.45, 8, F, x + 0.2, H + rh * 0.55 + 1.6, -0.6); });
+  }
+  if (o.label) { const lab = sign(o.label, F, 0, Math.min(H - 0.7, fh * 2 - 0.4), front + 0.12, Math.min(W - 1, 8), 0.9, o.labelBg || "#1D2A23", "#FFFFFF", "sans"); }
+  addAABB(F, W, D);
+  return { F, H, front };
+}
+// terraced row along a frontage. side: +1 means fronts face +z (north side of a road) etc.
+function row(x0, x1, frontZ, facing, specs, defaults = {}) {
+  let x = x0; const dir = Math.sign(x1 - x0) || 1;
+  for (const sp of specs) {
+    const w = sp.w; const cx = x + dir * w / 2; const D = sp.d || defaults.d || 9;
+    if (!sp.gap) {
+      const rot = facing === "+z" ? 0 : facing === "-z" ? Math.PI : facing === "+x" ? Math.PI / 2 : -Math.PI / 2;
+      let bx = cx, bz = frontZ;
+      if (facing === "+z") bz = frontZ - D / 2; else if (facing === "-z") bz = frontZ + D / 2;
+      if (facing === "+x") { bx = frontZ - D / 2; bz = cx; } else if (facing === "-x") { bx = frontZ + D / 2; bz = cx; }
+      building(Object.assign({}, defaults, sp, { x: bx, z: bz, rot, d: D }));
+    }
+    x += dir * w;
+  }
+}
+// High Street, north side (shops face the street, +z)
+const NORTH = [
+  { w: 8, floors: 3, wall: "stone", shop: true, name: "Millbrook Bank", shopColor: "paintNavy", roofMat: "roofSlate" },
+  { w: 6, shop: true, name: "Bakery", shopColor: "paintMaroon", awning: "awningRed" },
+  { w: 7, shop: true, name: "Books & Maps", shopColor: "paintGreen" },
+  { w: 9, shop: true, name: "Rosie's Café", shopColor: "paintGreen", awning: "awning", wall: "plasterCream", signBg: "#1F4A35" },
+  { w: 6, shop: true, name: "Newsagent", shopColor: "paintNavy", awning: "awningBlue" },
+  { w: 7, shop: true, name: "Post Office", shopColor: "paintRed", signBg: "#A8251F", signFg: "#FFF3D6" },
+  { w: 4, gap: true },
+  { w: 6, shop: true, name: "Butcher", shopColor: "paintMaroon", awning: "awningRed" },
+  { w: 7, shop: true, name: "Florist", shopColor: "paintGreen", awning: "awning" },
+  { w: 6, shop: true, name: "Barber", shopColor: "paintBlack" },
+  { w: 8, shop: true, name: "Hardware", shopColor: "paintNavy" },
+  { w: 6, shop: true, name: "Toy Shop", shopColor: "paintYellow", signBg: "#D9A82B", signFg: "#1E2224" },
+  { w: 6, shop: true, name: "Estate Agent", shopColor: "paintBlack" },
+  { w: 10, floors: 2, shop: true, name: "The Red Lion", shopColor: "paintMaroon", wall: "plasterWhite", signBg: "#5E1F25", roofMat: "roofBrown" }
+];
+row(-53, 43, -7, "+z", NORTH, { d: 11 });
+const SOUTH_W = [
+  { w: 7, shop: true, name: "Charity Shop", shopColor: "paintGreen" },
+  { w: 9, shop: true, name: "Chemist", shopColor: "paintGreen", signBg: "#1F6B4A", wall: "brickYellow" },
+  { w: 7, shop: true, name: "Deli", shopColor: "paintBlack", awning: "awning" },
+  { w: 8, shop: true, name: "Opticians", shopColor: "paintNavy" },
+  { w: 8, shop: true, name: "Ice Cream", shopColor: "paintRed", awning: "awningRed" }
+];
+row(-53, -14, 7, "-z", SOUTH_W, { d: 10 });
+const SOUTH_E = [
+  { w: 7, shop: true, name: "Pizzeria", shopColor: "paintRed", awning: "awningRed" },
+  { w: 14, floors: 3, shop: true, name: "The Millbrook Arms Hotel", shopColor: "paintNavy", wall: "brickYellow", signBg: "#1E3554" },
+  { w: 8, shop: true, name: "Travel Agent", shopColor: "paintBlack" }
+];
+row(14, 43, 7, "-z", SOUTH_E, { d: 12 });
+// Town hall at the end of the square
+building({ x: 0, z: 42, rot: Math.PI, w: 26, d: 14, floors: 3, fh: 3.4, wall: "stone", door: "paintNavy", label: "Town Hall", labelBg: "#2C3E50", pitch: 0.3 });
+{ const F = frameOf(0, 42, Math.PI); box("stone", 4, 4.5, 4, F, 0, 3 * 3.4 + 0.3 + 2.25 + 2.1, 0); place(new THREE.ConeGeometry(3, 4, 4), "roofSlate", F, 0, 18.5, 0, 0, Math.PI / 4); const c = sign("XII", F, 0, 13.4, 2.05, 1.6, 1.6, "#F4F1E8", "#1D2A23"); }
+// Church behind the north row, reached by the alley
+{ const F = frameOf(-6, -38, 0);
+  building({ x: -6, z: -38, rot: 0, w: 10, d: 22, floors: 2, fh: 3.6, wall: "stone", door: "paintMaroon", pitch: 0.55, chimney: false, roofMat: "roofSlate" });
+  box("stone", 5, 16, 5, F, 0, 8, 13.5); place(new THREE.ConeGeometry(3.6, 10, 4), "roofSlate", F, 0, 21, 13.5, 0, Math.PI / 4); addAABB(frameOf(-6, -24.5, 0), 5, 5);
+  box("paintMaroon", 1.4, 2.8, 0.1, F, 0, 1.4, 16.05); }
+box("gravel", 4, 0.06, 13, WORLD, -8, 0.03, -23.5);
+// Residential terraces
+const HOUSE = () => ({ w: 5.5 + Math.round(rnd() * 2), floors: 2, wall: pick(["brickRed", "brickRed", "brickYellow", "brickBrown", "plasterCream", "plasterWhite", "plasterBlue", "plasterPink"]), roofMat: pick(["roofSlate", "roofSlate", "roofRed"]) });
+function houses(x0, x1, frontZ, facing, opts = {}) { const specs = []; let len = Math.abs(x1 - x0); while (len > 6) { const h = HOUSE(); if (h.w > len) h.w = len; specs.push(h); len -= h.w; } row(x0, x1, frontZ, facing, specs, Object.assign({ d: 9 }, opts)); }
+houses(-53, -13, -53, "-z"); houses(1, 43, -53, "-z"); // Park Road, south side (church in the middle)
+houses(-53, 43, -67, "+z"); houses(57, 120, -67, "+z");
+houses(-53, -15, 53, "+z"); houses(15, 43, 53, "+z");
+[[-130, -98], [-84, -67]].forEach(([a, b]) => { houses(a, b, -67, "+z"); houses(a, b, 7, "-z"); houses(a, b, 53, "+z"); houses(a, b, -53, "-z"); houses(a, b, 67, "-z"); });
+houses(-130, -98, -7, "+z");
+houses(57, 120, -7, "+z", { d: 9 }); houses(57, 120, -53, "-z");
+houses(94, 120, 53, "+z"); houses(94, 120, 7, "-z"); houses(57, 120, 67, "-z");
+// Station (west of Station Road) and railway
+{ const st = building({ x: -73, z: -15, rot: Math.PI / 2, w: 26, d: 12, floors: 2, fh: 3.6, wall: "brickRed", door: "paintNavy", label: "Millbrook Station", labelBg: "#A8251F", roofMat: "roofSlate" });
+  const F = frameOf(-73, -15, Math.PI / 2);
+  box("concrete", 34, 1.0, 6, F, 0, 0.5, -9); raised.push([-85, -79, -32, 2]);
+  colliders.push({ x0: -86, x1: -79, z0: -32, z1: 2 });
+  [-13, -4.5, 4.5, 13].forEach(x => cyl("paintGreen", 0.12, 0.12, 3.4, 8, F, x, 2.7, -7.5));
+  box("roofSlate", 30, 0.2, 5, F, 0, 4.5, -8.8, 0.08);
+  [-90, -93.5].forEach(x => { [-0.7, 0.7].forEach(o => box("steel", 0.1, 0.18, 280, WORLD, x + o, 0.12, 0)); });
+  for (let z = -138; z < 138; z += 1.2) [-90, -93.5].forEach(x => box("wood", 2.4, 0.08, 0.3, WORLD, x, 0.05, z));
+  box("gravel", 9, 0.04, 280, WORLD, -91.7, 0.03, 0);
+  colliders.push({ x0: -97, x1: -86, z0: -140, z1: 140 });
+  // timetable board near the entrance
+  sign("Trains to LONDON · OXFORD · BRISTOL", frameOf(-66.7, -6.4, Math.PI / 2), 0, 2.3, 0, 3.2, 0.5, "#10233A", "#F4D35E", "sans");
+}
+// Business district east of Market Street
+building({ x: 57 + 8, z: -30, rot: -Math.PI / 2, w: 24, d: 16, floors: 5, fh: 3.5, modern: true, wall: "concrete" });
+sign("MILLBROOK TRADING CO.", frameOf(57.05, -30, -Math.PI / 2), 0, 4.3, 0, 9, 1, "#1D2A23", "#FFFFFF", "sans");
+building({ x: 57 + 18, z: 30, rot: -Math.PI / 2, w: 40, d: 36, floors: 1, fh: 10, modern: true, wall: "concrete" });
+sign("EXHIBITION CENTRE · TRADE FAIR TODAY", frameOf(57.05, 30, -Math.PI / 2), 0, 8.4, 0, 18, 1.4, "#B0372B", "#FFFFFF", "sans");
+[20, 25, 35, 40].forEach(z => { cyl("steel", 0.06, 0.06, 6, 8, WORLD, 56, 3, z); const f = sign(z < 30 ? "WELCOME" : "TRADE FAIR", frameOf(56.1, z, -Math.PI / 2), 0, 5, 0, 1.2, 2.4, z < 30 ? "#2C5B7B" : "#3F7440", "#FFFFFF", "sans"); f.rotation.y = -Math.PI / 2; circles.push({ x: 56, z, r: 0.2 }); });
+building({ x: 57 + 7, z: -95, rot: -Math.PI / 2, w: 20, d: 14, floors: 4, fh: 3.4, modern: true, wall: "concrete" });
+building({ x: 57 + 6, z: 95, rot: -Math.PI / 2, w: 16, d: 12, floors: 3, fh: 3.4, modern: true, wall: "concrete" });
+// Red telephone box
+{ const F = frameOf(1.4, -5.6, 0);
+  box("paintRed", 1.1, 2.6, 1.1, F, 0, 1.44, 0); box("paintRed", 1.25, 0.25, 1.25, F, 0, 2.86, 0); box("paintRed", 0.9, 0.18, 0.9, F, 0, 3.06, 0);
+  [-1, 1].forEach(s => { box("glass", 0.8, 1.6, 0.04, F, 0, 1.5, s * 0.56); box("glass", 0.04, 1.6, 0.8, F, s * 0.56, 1.5, 0); });
+  sign("TELEPHONE", F, 0, 2.62, 0.565, 0.8, 0.16, "#141414", "#FFFFFF", "sans"); addAABB(F, 1.2, 1.2); }
+// Post box, bins, bus stop
+{ cyl("paintRed", 0.3, 0.3, 1.25, 16, WORLD, -12, 0.77, -5.9); const d = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.paintRed); d.position.set(-12, 1.4, -5.9); d.castShadow = true; scene.add(d); circles.push({ x: -12, z: -5.9, r: 0.35 }); }
+[[-30, 5.3], [25, -5.3], [-40, -5.3], [40, 5.3]].forEach(([x, z]) => { cyl("paintBlack", 0.25, 0.22, 0.9, 12, WORLD, x, 0.6, z); circles.push({ x, z, r: 0.3 }); });
+{ const F = frameOf(-47, -5.2, 0); box("glass", 3.6, 2.2, 0.05, F, 0, 1.3, -0.8); box("metal", 3.8, 0.1, 1.5, F, 0, 2.45, -0.2); [-1.8, 1.8].forEach(x => box("metal", 0.08, 2.4, 0.08, F, x, 1.3, -0.8)); sign("BUS STOP", F, 1.2, 2.75, -0.2, 1.2, 0.3, "#A8251F", "#FFFFFF", "sans"); colliders.push({ x0: -49, x1: -45, z0: -6.1, z1: -5.9 }); }
+// street lamps
+function lamp(x, z, ry) { const F = frameOf(x, z, ry); cyl("metal", 0.07, 0.1, 4.2, 8, F, 0, 2.24, 0); box("metal", 0.08, 0.08, 0.7, F, 0, 4.25, 0.32); box("lamp", 0.32, 0.38, 0.32, F, 0, 4.0, 0.62); box("metal", 0.4, 0.06, 0.4, F, 0, 4.22, 0.62); circles.push({ x, z, r: 0.15 }); }
+for (let x = -130; x <= 130; x += 16) { lamp(x, -4.6, 0); lamp(x + 8, 4.6, Math.PI); lamp(x, -55, Math.PI); lamp(x + 8, 55, 0); }
+for (let z = -130; z <= 130; z += 18) { if (Math.abs(z) > 8) { lamp(-54.6, z, -Math.PI / 2); lamp(44.6, z, Math.PI / 2); } }
+// parked cars
+function car(x, z, rot, ci) {
+  const F = frameOf(x, z, rot), k = "car" + ci;
+  box(k, 1.75, 0.62, 4.2, F, 0, 0.62, 0); box(k, 1.6, 0.18, 2.1, F, 0, 1.47, -0.15);
+  box("glass", 1.55, 0.55, 2.2, F, 0, 1.15, -0.15); box(k, 1.74, 0.1, 0.9, F, 0, 0.98, 1.55, -0.12); box(k, 1.74, 0.1, 0.5, F, 0, 0.98, -1.85, 0.15);
+  [[-0.82, 1.35], [0.82, 1.35], [-0.82, -1.35], [0.82, -1.35]].forEach(([wx, wz]) => cyl("tire", 0.33, 0.33, 0.24, 14, F, wx, 0.33, wz, 0, 0, Math.PI / 2));
+  box("lamp", 0.3, 0.12, 0.05, F, -0.6, 0.75, 2.1); box("lamp", 0.3, 0.12, 0.05, F, 0.6, 0.75, 2.1); box("paintRed", 0.3, 0.12, 0.05, F, -0.6, 0.8, -2.1); box("paintRed", 0.3, 0.12, 0.05, F, 0.6, 0.8, -2.1);
+  addAABB(F, 1.8, 4.3);
+}
+[-48, -36, 14, 28, 36].forEach((x, i) => car(x, -2.6, Math.PI / 2, i % 6));
+[-50, -32, -20, 20, 30].forEach((x, i) => car(x, 2.6, -Math.PI / 2, (i + 3) % 6));
+[-40, -10, 20].forEach((z, i) => car(-61.5, z, 0, (i + 1) % 6)); [-80, -50, 80].forEach((z, i) => car(48.5, z, Math.PI, (i + 4) % 6));
+// Park south of Mill Road
+const PARK = [-53, 43, 67, 128];
+greenAreas.push(PARK);
+{ const pond = new THREE.Mesh(new THREE.CircleGeometry(13, 48), M.water); pond.rotation.x = -Math.PI / 2; pond.position.set(-8, 0.06, 98); pond.receiveShadow = true; scene.add(pond);
+  for (let a = 0; a < Math.PI * 2; a += Math.PI / 24) box("stone", 1.9, 0.3, 0.6, WORLD, -8 + Math.cos(a) * 13.2, 0.15, 98 + Math.sin(a) * 13.2, 0, -a + Math.PI / 2);
+  circles.push({ x: -8, z: 98, r: 13.4 });
+  box("gravel", 3, 0.05, 61, WORLD, 22, 0.03, 97.5); box("gravel", 74, 0.05, 3, WORLD, -12, 0.03, 76); box("gravel", 3, 0.05, 20, WORLD, -36, 0.03, 86);
+  // bandstand
+  const F = frameOf(25, 112, 0); cyl("stone", 4.5, 4.7, 0.6, 16, F, 0, 0.3, 0);
+  for (let a = 0; a < 8; a++) cyl("paintGreen", 0.1, 0.1, 3, 8, F, Math.cos(a * Math.PI / 4) * 4, 2, Math.sin(a * Math.PI / 4) * 4);
+  place(new THREE.ConeGeometry(5.2, 2.4, 8), "paintGreen", F, 0, 4.7, 0); circles.push({ x: 25, z: 112, r: 4.8 });
+  [[-30, 78, 0], [5, 78, 0], [18, 90, -Math.PI / 2], [18, 104, -Math.PI / 2]].forEach(([x, z, r]) => bench(WORLD, x, z, r));
+  for (let i = 0; i < 46; i++) { const x = PARK[0] + 3 + rnd() * (PARK[1] - PARK[0] - 6), z = PARK[2] + 4 + rnd() * (PARK[3] - PARK[2] - 8); if (Math.hypot(x + 8, z - 98) < 17 || Math.abs(x - 22) < 4 || Math.abs(z - 76) < 3 || Math.hypot(x - 25, z - 112) < 7) continue; tree(x, z, 0.9 + rnd() * 0.6, rnd() > 0.75 ? 1 : 0); }
+  for (let x = PARK[0]; x < PARK[1]; x += 2) if (Math.abs(x - 22) > 2.5) blob("hedge", 0.9, WORLD, x + 1, 0.6, 68.2, 0.75);
+}
+// street trees and a forest ring that hides the edge of the world
+for (let i = 0; i < (MOBILE ? 150 : 260); i++) { const a = rnd() * Math.PI * 2, r = 150 + rnd() * 90; tree(Math.cos(a) * r, Math.sin(a) * r, 1 + rnd() * 0.9, rnd() > 0.5 ? 1 : 0); }
+for (let i = 0; i < 40; i++) { const x = (rnd() - 0.5) * 250, z = (rnd() - 0.5) * 250; if (Math.abs(x) < 132 && Math.abs(z) < 132) { const inRoad = ROADS.concat(PAVES).some(([a, b, c, d]) => x > a - 2 && x < b + 2 && z > c - 2 && z < d + 2); const inB = colliders.some(c => x > c.x0 - 3 && x < c.x1 + 3 && z > c.z0 - 3 && z < c.z1 + 3); if (!inRoad && !inB && !(x > -16 && x < 16 && z > 5 && z < 50)) tree(x, z, 0.8 + rnd() * 0.5); } }
+flushBatches();
+const groundY = (x, z) => raised.some(([a, b, c, d]) => x > a && x < b && z > c && z < d) ? 0.14 : 0;
+
+/* ======================= CHARACTERS ======================= */
+// Realistic townspeople (Microsoft Rocketbox, MIT licence): each has its own body, face and clothes,
+// and they all share one skeleton, so the motion-captured animations fit without distortion.
+const CAST = { player: "Male_Adult_08", station: "Male_Adult_04", cafe: "Female_Adult_01", market: "Male_Adult_05", pub: "Female_Adult_17", hotel: "Male_Adult_14", office: "Female_Adult_09", fair: "Male_Adult_12", phone: "Male_Adult_06", pharmacy: "Female_Adult_15" };
+const EXTRAS = ["Female_Adult_04", "Male_Adult_02", "Female_Adult_13", "Male_Adult_13"];
+const loader = THREE.GLTFLoader ? new THREE.GLTFLoader() : null;
+const BASE = {}, ANIMS = {};
+let loadDone = 0, loadTotal = 1;
+function updLoad() { $("#load-bar").style.width = Math.round(30 + 70 * loadDone / loadTotal) + "%"; }
+function loadModel(name) {
+  const emb = document.getElementById("model-" + name);
+  const done = g => { loadDone++; updLoad(); return g; };
+  if (emb) return new Promise((res, rej) => loader.parse(emb.textContent, "", g => res(done(g)), rej));
+  const dir = name.startsWith("anims") || MOBILE ? "rb" : "rbhd";
+  return new Promise((res, rej) => loader.load(`${dir}/${name}.json`, g => res(done(g)), undefined, rej));
+}
+const CLIPS = { idle: "idle_neutral_01", idle2: "idle_neutral_02", look: "idle_look_around_01", walk: "walk_neutral_01", run: "run_neutral_01", talk1: "gestic_talk_neutral_01", talk2: "gestic_talk_neutral_02", talk3: "gestic_talk_relaxed_01", listen: "gestic_listen_accept_01", listen2: "gestic_listen_neutral_01", wave: "wave_01" };
+async function loadCharacters() {
+  if (!loader || !THREE.SkeletonUtils) throw new Error("no loader");
+  const names = [...new Set([...Object.values(CAST), ...EXTRAS])];
+  loadTotal = names.length + 2;
+  // a slow phone connection can drop a download: try each file up to three times
+  const tryLoad = async n => { for (let k = 0; k < 3; k++) { try { return await loadModel(n); } catch (e) { if (k === 2) throw e; await new Promise(r => setTimeout(r, 1500)); } } };
+  const [am, af] = await Promise.all([tryLoad("anims_m"), tryLoad("anims_f")]);
+  ANIMS.m = am.animations; ANIMS.f = af.animations;
+  await Promise.allSettled(names.map(n => tryLoad(n).then(g => {
+    g.scene.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+      const m = o.material; if (m && m.isMeshStandardMaterial) { m.roughness = /_head$/.test(m.name) ? 0.58 : /_opacity$/.test(m.name) ? 0.7 : 0.85; m.envMapIntensity = 0.9; if (m.map) m.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+    });
+    BASE[n] = g.scene;
+  })));
+  if (!Object.keys(BASE).length) throw new Error("no characters");
+}
+function makePerson(model) {
+  const g = new THREE.Group();
+  const female = model.startsWith("Female");
+  // if one person failed to download, use another real person of the same gender instead
+  if (!BASE[model]) model = Object.keys(BASE).find(k => k.startsWith(female ? "Female" : "Male")) || Object.keys(BASE)[0] || model;
+  if (BASE[model]) {
+    const obj = THREE.SkeletonUtils.clone(BASE[model]); g.add(obj);
+    const faces = [];
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      o.frustumCulled = false;
+      if (o.morphTargetDictionary && o.morphTargetDictionary.AA_VI_10_aa != null) faces.push(o);
+    });
+    const mixer = new THREE.AnimationMixer(obj); const acts = {};
+    const lib = female ? ANIMS.f : ANIMS.m;
+    for (const k in CLIPS) { const c = lib.find(a => a.name === CLIPS[k]); if (c) { acts[k] = mixer.clipAction(c); acts[k].play(); acts[k].setEffectiveWeight(0); acts[k].time = rnd() * c.duration; } }
+    if (acts.wave) { acts.wave.setLoop(THREE.LoopOnce, 1); acts.wave.clampWhenFinished = true; }
+    acts.idle.setEffectiveWeight(1);
+    const bones = {}; obj.traverse(o => { if (o.isBone) bones[o.name] = o; });
+    const w = {}; for (const k in acts) w[k] = k === "idle" ? 1 : 0;
+    g.userData = { real: true, female, mixer, acts, w, faces, head: bones.Bip01_Head, neck: bones.Bip01_Neck, look: 0, lookP: 0, talkClip: "talk1", idleClip: "idle", mode: "idle", modeT: 0, blink: 1 + rnd() * 3, blinkT: 0, vis: {} };
+  } else {
+    // simple stand-in if the models cannot load
+    const mk = (geo, col, y) => { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })); m.position.y = y; m.castShadow = true; g.add(m); return m; };
+    mk(new THREE.CylinderGeometry(0.16, 0.14, 0.85, 10), 0x2B2F38, 0.43); mk(new THREE.CylinderGeometry(0.22, 0.2, 0.62, 12), female ? 0x8C5A7A : 0x4F6A8A, 1.16); mk(new THREE.SphereGeometry(0.15, 16, 12), 0xE9C3A2, 1.62);
+    g.userData = { real: false, female, faces: [] };
+  }
+  return g;
+}
+const LOCO = { walk: 1.35, run: 3.9 };
+// Body: blend walking/running from speed; when standing, cross-fade between idle, talking, listening and waving.
+function animate(o, speed, dt) {
+  const u = o.userData; if (!u.real) return;
+  const tw = {}; for (const k in u.acts) tw[k] = 0;
+  if (u.mode === "wave" && u.acts.wave) { u.modeT += dt; if (u.modeT > u.acts.wave.getClip().duration - 0.3) setMode(o, "idle"); }
+  if (speed > 0.05) {
+    if (speed <= LOCO.walk) { const k = Math.min(1, speed / (LOCO.walk * 0.5)); tw.idle = 1 - k; tw.walk = k; }
+    else { const k = Math.min(1, (speed - LOCO.walk) / (LOCO.run - LOCO.walk)); tw.walk = 1 - k; tw.run = k; }
+  } else if (u.mode === "talk") tw[u.talkClip] = 1;
+  else if (u.mode === "listen") tw[u.acts.listen ? "listen" : "idle"] = 1;
+  else if (u.mode === "wave") tw.wave = 1;
+  else tw[u.idleClip] = 1;
+  const rate = Math.min(1, dt * 4);
+  for (const k in u.acts) {
+    u.w[k] += ((tw[k] || 0) - u.w[k]) * rate;
+    if (u.w[k] < 0.002 && !tw[k]) u.w[k] = 0;
+    u.acts[k].setEffectiveWeight(u.w[k]);
+  }
+  if (u.acts.walk) u.acts.walk.timeScale = speed > 0.05 ? Math.max(0.6, Math.min(1.5, speed / LOCO.walk)) : 1;
+  if (u.acts.run) u.acts.run.timeScale = speed > LOCO.walk ? Math.max(0.8, Math.min(1.3, speed / LOCO.run)) : 1;
+  // change idle variety now and then
+  u.modeT += dt;
+  if (u.mode === "idle" && u.modeT > 9 + rnd() * 8) { u.modeT = 0; u.idleClip = pick(["idle", "idle", "idle2", "look"].filter(k => u.acts[k])); }
+  u.mixer.update(dt);
+}
+function setMode(o, mode) {
+  const u = o.userData; if (!u.real || u.mode === mode) return;
+  u.mode = mode; u.modeT = 0;
+  if (mode === "talk") { u.talkClip = pick(["talk1", "talk2", "talk3"].filter(k => u.acts[k])) || "idle"; }
+  if (mode === "wave" && u.acts.wave) { u.acts.wave.reset(); u.acts.wave.play(); }
+}
+// Turn head and neck towards a point in world space (works with any bone orientation).
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _yAxis = new THREE.Vector3(0, 1, 0), _xAxis = new THREE.Vector3();
+function turnBone(bone, yaw, pitch, rightAxis) {
+  bone.parent.updateMatrixWorld(true);
+  bone.getWorldQuaternion(_q1);
+  _q2.setFromAxisAngle(_yAxis, yaw); _q3.setFromAxisAngle(rightAxis, pitch);
+  _q1.premultiply(_q3).premultiply(_q2);
+  bone.parent.getWorldQuaternion(_q2).invert();
+  bone.quaternion.copy(_q2.multiply(_q1));
+}
+function lookAt(o, tx, ty, tz, on, dt) {
+  const u = o.userData; if (!u.real || !u.head) return;
+  const dx = tx - o.position.x, dz = tz - o.position.z;
+  let yaw = Math.atan2(dx, dz) - o.rotation.y; yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+  const want = on && Math.abs(yaw) < 1.9 ? Math.max(-1.0, Math.min(1.0, yaw)) : 0;
+  const pitch = on ? Math.max(-0.35, Math.min(0.3, Math.atan2(ty - (o.position.y + 1.65), Math.hypot(dx, dz)))) : 0;
+  u.look += (want - u.look) * Math.min(1, dt * 4); u.lookP += (pitch - u.lookP) * Math.min(1, dt * 4);
+  if (Math.abs(u.look) < 0.002 && Math.abs(u.lookP) < 0.002) return;
+  const face = o.rotation.y + u.look;
+  _xAxis.set(Math.cos(face), 0, -Math.sin(face)); // the character's right, around which the head nods
+  if (u.neck) turnBone(u.neck, u.look * 0.35, -u.lookP * 0.35, _xAxis);
+  turnBone(u.head, u.look * 0.55, -u.lookP * 0.6, _xAxis);
+}
+// Face: visemes follow the words being spoken, plus blinking and a light smile.
+const VIS_OF = { a: "AA_VI_10_aa", e: "AA_VI_11_E", i: "AA_VI_12_I", o: "AA_VI_13_O", u: "AA_VI_14_U", y: "AA_VI_12_I", w: "AA_VI_14_U", p: "AA_VI_01_PP", b: "AA_VI_01_PP", m: "AA_VI_01_PP", f: "AA_VI_02_FF", v: "AA_VI_02_FF", t: "AA_VI_04_DD", d: "AA_VI_04_DD", k: "AA_VI_05_KK", g: "AA_VI_05_KK", c: "AA_VI_05_KK", q: "AA_VI_05_KK", s: "AA_VI_07_SS", z: "AA_VI_07_SS", x: "AA_VI_07_SS", n: "AA_VI_08_nn", l: "AA_VI_08_nn", r: "AA_VI_09_RR", h: "AA_VI_10_aa", j: "AA_VI_06_CH" };
+function visemeAt(text, pos) {
+  const c = text.charAt(pos).toLowerCase(), n = text.charAt(pos + 1).toLowerCase();
+  if (c === "t" && n === "h") return "AA_VI_03_TH";
+  if ((c === "s" || c === "c") && n === "h") return "AA_VI_06_CH";
+  return VIS_OF[c] || null;
+}
+function face(o, dt) {
+  const u = o.userData; if (!u.real || !u.faces.length) return;
+  const talking = isSpeaking(o);
+  let cur = null, amt = 0;
+  if (talking && VOICE.text) {
+    const pos = Math.floor(VOICE.lipChar + (performance.now() - VOICE.lipT) / VOICE.msPerChar);
+    if (pos < VOICE.text.length) { cur = visemeAt(VOICE.text, pos); amt = /[aeiou]/i.test(VOICE.text.charAt(pos)) ? 0.85 : 0.6; }
+  }
+  u.blinkT -= dt; let blink = 0;
+  if (u.blinkT < 0) { blink = 1; if (u.blinkT < -0.13) u.blinkT = 2 + rnd() * 4; }
+  for (const m of u.faces) {
+    const d = m.morphTargetDictionary, inf = m.morphTargetInfluences;
+    const want = cur && d[cur] == null ? (/_1[0-4]_|_09_|_03_/.test(cur) ? "AA_VI_10_aa" : /_0[4-8]_/.test(cur) ? "AA_VI_07_SS" : "AA_VI_01_PP") : cur;
+    for (const k in d) {
+      if (!k.startsWith("AA_VI_")) continue;
+      const target = k === want ? amt : 0;
+      inf[d[k]] += (target - inf[d[k]]) * Math.min(1, dt * 22);
+    }
+    if (d.AK_09_EyeBlinkLeft != null) { inf[d.AK_09_EyeBlinkLeft] = blink; inf[d.AK_10_EyeBlinkRight] = blink; }
+    if (d.AK_44_MouthSmileLeft != null) { const s = talking ? 0.12 : 0.22; inf[d.AK_44_MouthSmileLeft] = s; inf[d.AK_45_MouthSmileRight] = s; }
+    if (d.AK_03_BrowInnerUp != null) inf[d.AK_03_BrowInnerUp] = talking ? 0.15 + 0.15 * Math.sin(T * 3) : 0;
+  }
+}
+
+/* ======================= PEOPLE ======================= */
+let player, npcs = [], walkers = [];
+const ROUTES = [
+  [[-50, -6.4], [42, -6.4], [42, 6.4], [-50, 6.4]],
+  [[40, 6.4], [-13.3, 6.4], [-13.3, 34], [12.5, 34], [12.5, 8], [40, 8]],
+  [[-55.5, -53.8], [-55.5, 53.8], [45.5, 53.8], [45.5, -53.8]],
+  [[-6, 11], [-6, 32], [-1, 32], [-1, 11]],
+  [[-40, 76], [20.5, 76], [20.5, 118], [-40, 118]],
+  [[56.5, -110], [56.5, 110], [45.5, 110], [45.5, -110]],
+  [[42, -6.4], [-50, -6.4], [-50, 6.4], [42, 6.4]],
+  [[20.5, 118], [20.5, 76], [-40, 76], [-40, 118]]
+];
+// people out for a walk: anyone you stop for a chat
+const STRANGERS = [
+  { name: "Emma", female: true, from: ["I'm from Manchester, but I work here now.", "Sono di Manchester, ma ora lavoro qui."], job: ["I'm a teacher at the primary school.", "Sono maestra alla scuola elementare."], today: ["I'm just popping to the shops before lunch.", "Faccio un salto nei negozi prima di pranzo."], free: ["I love reading and going to yoga.", "Adoro leggere e fare yoga."], life: ["Pretty good, thanks! Busy with the kids at school.", "Abbastanza bene, grazie! Tanto da fare con i bambini a scuola."] },
+  { name: "James", female: false, from: ["I'm from London, born and raised.", "Sono di Londra, nato e cresciuto."], job: ["I'm an engineer. I design bridges.", "Sono ingegnere. Progetto ponti."], today: ["I'm taking a day off, actually. Just enjoying the town.", "In realtà ho un giorno libero. Mi godo il paese."], free: ["I play tennis and I like cooking.", "Gioco a tennis e mi piace cucinare."], life: ["Can't complain! Work's been busy, though.", "Non mi lamento! Però il lavoro è stato intenso."] },
+  { name: "Margaret", female: true, from: ["I've lived in Millbrook all my life, dear.", "Ho vissuto a Millbrook tutta la vita, caro."], job: ["I'm retired now. I used to be a nurse.", "Ora sono in pensione. Facevo l'infermiera."], today: ["I'm going to see my grandchildren this afternoon.", "Oggi pomeriggio vado a trovare i miei nipotini."], free: ["I love gardening and baking cakes.", "Adoro il giardinaggio e fare torte."], life: ["Lovely, thank you. Retirement suits me!", "Benissimo, grazie. La pensione mi fa bene!"] },
+  { name: "Peter", female: false, from: ["I'm from Oxford, not far from here.", "Sono di Oxford, non lontano da qui."], job: ["I run a small bookshop.", "Ho una piccola libreria."], today: ["I'm walking the long way to work. It's too nice to drive!", "Vado al lavoro facendo il giro lungo. È troppo bello per prendere la macchina!"], free: ["I like fishing and old films.", "Mi piacciono la pesca e i film vecchi."], life: ["Not bad at all, thanks for asking.", "Niente male, grazie per avermelo chiesto."] },
+  { name: "Sophie", female: true, from: ["I'm from Brighton, by the sea.", "Sono di Brighton, sul mare."], job: ["I work in marketing for a small company.", "Lavoro nel marketing per una piccola azienda."], today: ["I'm meeting a friend for coffee.", "Vedo un'amica per un caffè."], free: ["I go running and I love travelling.", "Vado a correre e adoro viaggiare."], life: ["Really good, actually. I've just moved here!", "Molto bene, in realtà. Mi sono appena trasferita qui!"] },
+  { name: "Daniel", female: false, from: ["I'm from Liverpool.", "Sono di Liverpool."], job: ["I'm a chef at a restaurant near the river.", "Sono chef in un ristorante vicino al fiume."], today: ["I'm buying some fresh veg at the market for tonight.", "Compro verdura fresca al mercato per stasera."], free: ["I support Liverpool and I play five-a-side football.", "Tifo Liverpool e gioco a calcetto."], life: ["Busy! Restaurants never stop, but I love it.", "Pieno di impegni! I ristoranti non si fermano mai, ma mi piace."] },
+  { name: "Claire", female: true, from: ["I'm from Bath. It's a beautiful city.", "Sono di Bath. È una città bellissima."], job: ["I'm an accountant.", "Sono commercialista."], today: ["I'm on my lunch break, just getting some fresh air.", "Sono in pausa pranzo, prendo un po' d'aria."], free: ["I like painting and going to concerts.", "Mi piace dipingere e andare ai concerti."], life: ["Good, thanks. Looking forward to my holiday!", "Bene, grazie. Non vedo l'ora delle vacanze!"] },
+  { name: "Robert", female: false, from: ["I'm from Newcastle, up in the north-east.", "Sono di Newcastle, nel nord-est."], job: ["I'm a taxi driver, so I know every street here!", "Faccio il tassista, quindi conosco ogni strada!"], today: ["I've just finished my shift. Time to relax.", "Ho appena finito il turno. È ora di rilassarsi."], free: ["I love cycling and watching rugby.", "Adoro andare in bici e guardare il rugby."], life: ["Not too bad, mate. Can't complain.", "Non male, amico. Non mi lamento."] }
+];
+const PL = { speed: 0, dir: Math.PI };
+function setupPeople() {
+  player = makePerson(CAST.player); player.position.set(2, 0.12, 15); player.rotation.y = Math.PI; scene.add(player);
+  PLACES.forEach((p, i) => {
+    const [x, z, yaw] = SPOTS[p.id];
+    const o = makePerson(CAST[p.id]); o.position.set(x, groundY(x, z), z); o.rotation.y = yaw; scene.add(o);
+    npcs.push({ p, obj: o, x, z, home: yaw, vi: i, female: !!FEMALE[p.id], lastGreet: -1e9, nextFidget: 6 + rnd() * 10 });
+    circles.push({ x, z, r: 0.45 });
+  });
+  ROUTES.forEach((r, i) => {
+    const s = STRANGERS[i % STRANGERS.length];
+    const model = EXTRAS.filter(m => m.startsWith(s.female ? "Female" : "Male"))[Math.floor(i / 2) % 2];
+    const o = makePerson(model); scene.add(o);
+    const id = "w" + i;
+    PROFILE[id] = { full: s.name, short: s.name, from: s.from, job: s.job, today: s.today, free: s.free, life: s.life };
+    const p = { id, en: "Passer-by", it: "Passante", type: "life", stranger: true, npc: { name: s.name, role: "a friendly local walking through town", roleIt: "una persona a passeggio" },
+      scene: `${s.name} is walking through the town centre of Millbrook and stops for a friendly chat with the learner. About ${s.name}: ${s.from[0]} ${s.job[0]} ${s.today[0]} ${s.free[0]}`,
+      setting: "Una persona a passeggio si ferma a chiacchierare con te.", steps: [], end: ["", ""],
+      phrases: [["Excuse me, have you got a minute?", "Scusi, ha un minuto?"], ["Do you live around here?", "Abita da queste parti?"], ["How's your day going?", "Come va la giornata?"], ["Go straight on and turn left.", "Vada dritto e giri a sinistra."], ["It's next to the bank.", "È accanto alla banca."], ["It was nice talking to you!", "È stato un piacere parlare con te!"]],
+      idioms: [["to have a chat", "fare due chiacchiere"], ["to pop to the shops", "fare un salto nei negozi"], ["to get some fresh air", "prendere una boccata d'aria"], ["you can't miss it", "non può sbagliare (lo vede di sicuro)"]],
+      manners: ["Per fermare qualcuno per strada si dice \"Excuse me…\", mai \"Hey!\".", "In Inghilterra le chiacchiere con gli sconosciuti sono brevi e cordiali: meteo, giornata, il paese.", "Quando qualcuno ti aiuta: \"Thanks, that's really kind of you!\""] };
+    const w = { p, obj: o, route: r, seg: 0, t: rnd() * 0.8, female: s.female, vi: 5 + i, lastGreet: -1e9, pause: 0, speed: 1.1 + rnd() * 0.3, v: 0, x: 0, z: 0, walker: true, home: 0 };
+    const [ax, az] = r[0]; o.position.set(ax, 0, az); w.x = ax; w.z = az; walkers.push(w);
+  });
+}
+
+/* ======================= INPUT & CAMERA ======================= */
+const keys = {};
+const typing = () => { const a = document.activeElement; return a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT"); };
+addEventListener("keydown", e => {
+  if (typing()) return;
+  const k = e.key.toLowerCase(); keys[k] = true;
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
+  if (k === "e" && near && !dialog) openDialog(near);
+  if (k === "escape" && dialog) closeDialog();
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+let camYaw = Math.PI, camPitch = 0.32, camDist = 4.6;
+const joy = { x: 0, y: 0, id: null };
+const isTouch = matchMedia("(pointer: coarse)").matches;
+if (isTouch) { $("#joy").hidden = false; $("#keys").hidden = true; }
+const joyEl = $("#joy"), knob = $("#knob");
+joyEl.addEventListener("pointerdown", e => { joy.id = e.pointerId; joyEl.setPointerCapture(e.pointerId); moveJoy(e); });
+joyEl.addEventListener("pointermove", e => { if (joy.id === e.pointerId) moveJoy(e); });
+const endJoy = e => { if (joy.id !== e.pointerId) return; joy.id = null; joy.x = joy.y = 0; knob.style.transform = ""; };
+joyEl.addEventListener("pointerup", endJoy); joyEl.addEventListener("pointercancel", endJoy);
+function moveJoy(e) {
+  const r = joyEl.getBoundingClientRect(), R = r.width / 2 - 10;
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; }
+  joy.x = dx / R; joy.y = dy / R; knob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+const drags = new Map();
+renderer.domElement.addEventListener("pointerdown", e => { drags.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
+addEventListener("pointermove", e => {
+  const d = drags.get(e.pointerId); if (!d || dialog) return;
+  camYaw -= (e.clientX - d.x) * 0.006; camPitch = Math.max(0.05, Math.min(1.1, camPitch + (e.clientY - d.y) * 0.004));
+  d.x = e.clientX; d.y = e.clientY;
+});
+const endDrag = e => drags.delete(e.pointerId);
+addEventListener("pointerup", endDrag); addEventListener("pointercancel", endDrag);
+renderer.domElement.addEventListener("wheel", e => { e.preventDefault(); camDist = Math.max(2.4, Math.min(12, camDist + e.deltaY * 0.004)); }, { passive: false });
+
+function blocked(x, z) {
+  if (Math.abs(x) > 132 || Math.abs(z) > 132) return true;
+  for (const c of colliders) if (x > c.x0 - 0.3 && x < c.x1 + 0.3 && z > c.z0 - 0.3 && z < c.z1 + 0.3) return true;
+  for (const c of circles) if (Math.hypot(x - c.x, z - c.z) < c.r + 0.3) return true;
+  return false;
+}
+
+/* ======================= BUBBLES ======================= */
+const bubbles = new Map();
+function say(who, en, it, ms = 4500) {
+  let b = bubbles.get(who);
+  if (!b) { b = { el: el("div", "hud bubble") }; $("#bubbles").append(b.el); bubbles.set(who, b); }
+  b.el.textContent = en; if (it) b.el.append(el("small", null, it));
+  b.until = performance.now() + ms; b.el.hidden = false;
+}
+const _v = new THREE.Vector3();
+function updateBubbles() {
+  const now = performance.now(), W = app.clientWidth, H = app.clientHeight;
+  bubbles.forEach((b, who) => {
+    if (now > b.until || dialog) { b.el.hidden = true; return; }
+    _v.set(who.position.x, who.position.y + 2.15, who.position.z).project(camera);
+    if (_v.z > 1 || Math.abs(_v.x) > 1.1 || Math.abs(_v.y) > 1.1) { b.el.hidden = true; return; }
+    b.el.hidden = false; b.el.style.transform = `translate(${(_v.x * 0.5 + 0.5) * W}px, ${(-_v.y * 0.5 + 0.5) * H}px) translate(-50%, -100%)`;
+  });
+}
+
+/* ======================= MINIMAP & GUIDE ======================= */
+const mini = $("#mini"), mg = mini.getContext("2d");
+const MS = 320 / 270, mx = x => (x + 135) * MS, mz = z => (z + 135) * MS;
+let miniBase = null;
+function buildMiniBase() {
+  const c = document.createElement("canvas"); c.width = c.height = 320; const g = c.getContext("2d");
+  g.fillStyle = "#B9D4A0"; g.fillRect(0, 0, 320, 320);
+  g.fillStyle = "#9CC583"; greenAreas.forEach(([a, b, cz, d]) => g.fillRect(mx(a), mz(cz), (b - a) * MS, (d - cz) * MS));
+  g.fillStyle = "#7FB0CC"; g.beginPath(); g.arc(mx(-8), mz(98), 13 * MS, 0, 7); g.fill();
+  g.fillStyle = "#FBF7EC"; ROADS.forEach(([a, b, cz, d]) => g.fillRect(mx(a), mz(cz), (b - a) * MS, (d - cz) * MS));
+  g.fillStyle = "#D9C9A8"; g.fillRect(mx(-14), mz(7), 28 * MS, 28 * MS);
+  g.fillStyle = "#8A7F70"; colliders.forEach(c => { if ((c.x1 - c.x0) * (c.z1 - c.z0) > 8) g.fillRect(mx(c.x0), mz(c.z0), (c.x1 - c.x0) * MS, (c.z1 - c.z0) * MS); });
+  miniBase = c;
+}
+let guideTarget = null;
+function drawMini() {
+  if (!miniBase) return;
+  mg.drawImage(miniBase, 0, 0);
+  npcs.forEach(n => { mg.fillStyle = MET.has(n.p.id) ? "#3F7440" : "#E2B33C"; mg.beginPath(); mg.arc(mx(n.x), mz(n.z), 7, 0, 7); mg.fill(); mg.strokeStyle = n === guideTarget ? "#B0372B" : "#1D2A23"; mg.lineWidth = n === guideTarget ? 4 : 2; mg.stroke(); });
+  const px = mx(player.position.x), pz = mz(player.position.z);
+  mg.save(); mg.translate(px, pz); mg.rotate(Math.PI - player.rotation.y);
+  mg.fillStyle = "#1D2A23"; mg.strokeStyle = "#fff"; mg.lineWidth = 2; mg.beginPath(); mg.moveTo(0, -12); mg.lineTo(8, 9); mg.lineTo(0, 4); mg.lineTo(-8, 9); mg.closePath(); mg.fill(); mg.stroke();
+  mg.restore();
+}
+function updateGuide() {
+  const gEl = $("#guide");
+  if (!guideTarget || dialog) { gEl.hidden = true; return; }
+  const dx = guideTarget.x - player.position.x, dz = guideTarget.z - player.position.z, d = Math.hypot(dx, dz);
+  if (d < 4) { guideTarget = null; gEl.hidden = true; return; }
+  gEl.hidden = false;
+  const ang = Math.atan2(dx, dz) - camYaw;
+  $("#guide-arrow").style.transform = `rotate(${-ang * 180 / Math.PI}deg)`;
+  $("#guide-text").textContent = `${guideTarget.p.npc.name} · ${Math.round(d)} m`;
+}
+$("#guide-x").onclick = () => { guideTarget = null; };
+function renderPeople() {
+  const L = $("#people-list"); L.innerHTML = "";
+  npcs.slice().sort((a, b) => Math.hypot(a.x - player.position.x, a.z - player.position.z) - Math.hypot(b.x - player.position.x, b.z - player.position.z)).forEach(n => {
+    const r = el("div", "person");
+    const sw = el("span", "sw"); sw.style.background = n.p.type === "work" ? "#2C5B7B" : "#B0372B";
+    r.append(sw, el("b", null, `${n.p.npc.name} · ${n.p.en}${MET.has(n.p.id) ? " ✓" : ""}`));
+    const go = el("div", "go");
+    const a = el("button", "btn", "Mostra la strada"); a.type = "button"; a.onclick = () => { guideTarget = n; $("#people").hidden = true; };
+    const b = el("button", "btn primary", "Vai lì"); b.type = "button"; b.onclick = () => { teleportTo(n); $("#people").hidden = true; };
+    go.append(a, b); r.append(go);
+    r.append(el("span", null, `${n.p.npc.roleIt} · ${n.p.type === "work" ? "lavoro" : "vita quotidiana"} · ${Math.round(Math.hypot(n.x - player.position.x, n.z - player.position.z))} m`));
+    L.append(r);
+  });
+}
+function teleportTo(n) {
+  const fx = Math.sin(n.home), fz = Math.cos(n.home);
+  player.position.set(n.x + fx * 2.6, groundY(n.x + fx * 2.6, n.z + fz * 2.6), n.z + fz * 2.6);
+  player.rotation.y = Math.atan2(-fx, -fz); camYaw = player.rotation.y; n.lastGreet = -1e9;
+  PL.speed = 0; PL.dir = player.rotation.y;
+}
+$("#people-btn").onclick = () => { renderPeople(); $("#people").hidden = false; };
+$("#people-x").onclick = () => { $("#people").hidden = true; };
+
+/* ======================= MAIN LOOP ======================= */
+let near = null, dialog = null;
+const clock = new THREE.Clock();
+const camPos = new THREE.Vector3(2, 3, 20), camLook = new THREE.Vector3(2, 1.4, 14);
+const angleTo = (a, b, t) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return a + d * t; };
+const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
+let T = 0, userTalkingUntil = 0;
+const userTalking = () => performance.now() < userTalkingUntil;
+const headOf = o => [o.position.x, o.position.y + 1.65, o.position.z];
+// standing people: talk with gestures while speaking, nod while you speak, otherwise idle
+function conversationMode(o, isPartner) {
+  if (o.userData.mode === "wave") return;
+  if (isSpeaking(o)) setMode(o, "talk");
+  else if (isPartner && userTalking()) setMode(o, "listen");
+  else setMode(o, "idle");
+}
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05); T += dt;
+  // ---- player: input relative to the camera, with acceleration and turning like a real walk
+  let ix = 0, iz = 0, run = false;
+  if (!dialog) {
+    if (keys.w || keys.arrowup) iz += 1; if (keys.s || keys.arrowdown) iz -= 1;
+    if (keys.a) ix -= 1; if (keys.d) ix += 1;
+    if (keys.arrowleft) camYaw += 2 * dt; if (keys.arrowright) camYaw -= 2 * dt;
+    run = !!keys.shift;
+    if (joy.id !== null) { ix += joy.x; iz += -joy.y; run = run || Math.hypot(joy.x, joy.y) > 0.92; }
+  }
+  const mag = Math.min(1, Math.hypot(ix, iz));
+  let target = 0;
+  if (mag > 0.08) {
+    const fx = Math.sin(camYaw), fz = Math.cos(camYaw), rx = -fz, rz = fx;
+    PL.dir = Math.atan2(fx * iz + rx * ix, fz * iz + rz * ix);
+    target = (run ? LOCO.run : LOCO.walk) * mag;
+  }
+  const turnGap = Math.abs(angDiff(player.rotation.y, PL.dir));
+  if (mag > 0.08) player.rotation.y = angleTo(player.rotation.y, PL.dir, Math.min(1, dt * (PL.speed > 2.5 ? 5 : 8)));
+  if (turnGap > 1.6) target *= 0.35;
+  PL.speed += (target - PL.speed) * Math.min(1, dt * (target > PL.speed ? 3.2 : 6));
+  if (PL.speed < 0.02) PL.speed = 0;
+  if (PL.speed > 0) {
+    const nx = player.position.x + Math.sin(player.rotation.y) * PL.speed * dt, nz = player.position.z + Math.cos(player.rotation.y) * PL.speed * dt;
+    let moved = false;
+    if (!blocked(nx, player.position.z)) { player.position.x = nx; moved = true; }
+    if (!blocked(player.position.x, nz)) { player.position.z = nz; moved = true; }
+    if (!moved) PL.speed *= 0.5;
+  }
+  player.position.y += (groundY(player.position.x, player.position.z) - player.position.y) * Math.min(1, dt * 12);
+  if (dialog) { if (userTalking()) setMode(player, "talk"); else if (isSpeaking(dialog.obj)) setMode(player, "listen"); else setMode(player, "idle"); }
+  else setMode(player, "idle");
+  animate(player, PL.speed, dt);
+  if (dialog) lookAt(player, ...headOf(dialog.obj), true, dt);
+  face(player, dt);
+
+  // ---- people standing at their places
+  near = null; let best = 3.6;
+  const ph = headOf(player);
+  npcs.forEach(n => {
+    const o = n.obj, dx = player.position.x - n.x, dz = player.position.z - n.z, d = Math.hypot(dx, dz);
+    if (!dialog && d < best) { best = d; near = n; }
+    const engaged = d < 7 || dialog === n;
+    const faceTo = engaged ? Math.atan2(dx, dz) : n.home;
+    const gap = angDiff(o.rotation.y, faceTo);
+    let shuffle = 0;
+    if (Math.abs(gap) > (engaged ? 0.6 : 0.15) || n.turning) {
+      n.turning = Math.abs(gap) > 0.06;
+      o.rotation.y = angleTo(o.rotation.y, faceTo, Math.min(1, dt * 2.6));
+      shuffle = n.turning ? 0.45 : 0;
+    }
+    if (!dialog && d < 8 && T * 1000 - n.lastGreet > 45000 && VOICE.unlocked) {
+      n.lastGreet = T * 1000; const [en, it] = GREET[n.p.id];
+      say(o, en, it); speak(en, { female: n.female, vi: n.vi, who: o }); setMode(o, "wave");
+    }
+    if (d < 70) { conversationMode(o, dialog === n); animate(o, shuffle, dt); lookAt(o, ...ph, engaged, dt); face(o, dt); }
+  });
+  // ---- passers-by: walk their routes, slow down near you, greet, and stop to chat
+  walkers.forEach(w => {
+    const o = w.obj, dx = player.position.x - o.position.x, dz = player.position.z - o.position.z, dpl = Math.hypot(dx, dz);
+    const chatting = dialog === w;
+    if (!dialog && dpl < Math.min(best, 2.8)) { best = dpl; near = w; }
+    const ahead = dpl < 1.8 && Math.cos(Math.atan2(dx, dz) - o.rotation.y) > 0.6;
+    let want = w.speed;
+    if (chatting || w.pause > 0) { if (!chatting) w.pause -= dt; want = 0; o.rotation.y = angleTo(o.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 3)); }
+    else if (ahead || (dpl < 2.6 && near === w)) want = 0;
+    w.v += (want - w.v) * Math.min(1, dt * 3);
+    if (w.v < 0.03) w.v = want ? w.v : 0;
+    if (w.v > 0.03 && !chatting && w.pause <= 0) {
+      const a = w.route[w.seg], b = w.route[(w.seg + 1) % w.route.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]); w.t += w.v * dt / L;
+      if (w.t >= 1) { w.t = 0; w.seg = (w.seg + 1) % w.route.length; }
+      const nb = w.route[(w.seg + 1) % w.route.length], na = w.route[w.seg];
+      o.position.x = na[0] + (nb[0] - na[0]) * w.t; o.position.z = na[1] + (nb[1] - na[1]) * w.t;
+      o.rotation.y = angleTo(o.rotation.y, Math.atan2(nb[0] - na[0], nb[1] - na[1]), Math.min(1, dt * 3.5));
+    }
+    w.x = o.position.x; w.z = o.position.z; w.home = o.rotation.y;
+    if (dpl < 3.2 && !dialog && T * 1000 - w.lastGreet > 60000 && VOICE.unlocked && !isSpeakingAny()) {
+      w.lastGreet = T * 1000; w.pause = 3.5; const [en, it] = pick(PASSING);
+      say(o, en, it, 3000); speak(en, { female: w.female, vi: w.vi, who: o, pitch: w.female ? 1.06 : 0.94 });
+      if (rnd() < 0.5) setMode(o, "wave");
+    }
+    o.position.y = groundY(o.position.x, o.position.z);
+    if (dpl < 80) {
+      if (w.v < 0.05) conversationMode(o, chatting); else if (o.userData.mode !== "wave") setMode(o, "idle");
+      animate(o, w.v, dt); lookAt(o, ...ph, dpl < 6, dt); face(o, dt);
+    }
+  });
+  const pr = $("#prompt");
+  if (near && !dialog) { pr.hidden = false; $("#talk-label").textContent = `Parla con ${near.p.npc.name}`; } else pr.hidden = true;
+
+  // ---- camera
+  let wantPos, wantLook;
+  if (dialog) {
+    const n = dialog, px = player.position.x, pz = player.position.z;
+    const dx = n.x - px, dz = n.z - pz, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+    wantPos = new THREE.Vector3(px - ux * 1.4 - uz * 0.7, 1.74, pz - uz * 1.4 + ux * 0.7);
+    wantLook = new THREE.Vector3(n.x, 0.9, n.z);
+    player.rotation.y = angleTo(player.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 5));
+  } else {
+    const fx = Math.sin(camYaw), fz = Math.cos(camYaw), cp = Math.cos(camPitch), sp = Math.sin(camPitch);
+    const tx = player.position.x, ty = player.position.y + 1.6, tz = player.position.z;
+    wantPos = new THREE.Vector3(tx - fx * camDist * cp, ty + camDist * sp, tz - fz * camDist * cp);
+    wantLook = new THREE.Vector3(tx + fx * 0.6, ty - 0.1, tz + fz * 0.6);
+  }
+  camPos.lerp(wantPos, Math.min(1, dt * (dialog ? 4 : 8))); camLook.lerp(wantLook, Math.min(1, dt * (dialog ? 4 : 10)));
+  camera.position.copy(camPos); camera.lookAt(camLook);
+  sun.position.set(player.position.x + SUN_DIR.x * 100, SUN_DIR.y * 100, player.position.z + SUN_DIR.z * 100);
+  sun.target.position.set(player.position.x, 0, player.position.z); sun.target.updateMatrixWorld();
+  sky.position.copy(camera.position);
+  clouds.forEach(c => { c.position.x += dt * 1.5; if (c.position.x > 450) c.position.x = -450; });
+  renderer.render(scene, camera);
+  updateBubbles(); drawMini(); updateGuide();
+  requestAnimationFrame(frame);
+}
+const isSpeakingAny = () => performance.now() < VOICE.until;
+
+/* ======================= CONVERSATION ======================= */
+let sample = null, sampleState = "pending";
+(async () => {
+  try { sample = window.claude && window.claude.use ? await window.claude.use("sample") : null; } catch { sample = null; }
+  sampleState = sample ? "ready" : "none";
+  $("#mode-btn").hidden = sampleState !== "ready";
+})();
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let micBlocked = !SR, rec = null, listening = false;
+const micHelp = () => micBlocked
+  ? "Microfono: se il pulsante \"Parla\" non funziona, tocca la casella di testo e usa il microfono della tastiera del telefono (dettatura). Parli in inglese e il testo si scrive da solo."
+  : "Microfono: tocca \"Parla\", rispondi in inglese, e la frase parte quando smetti di parlare. Con \"Mani libere\" ti ascolto da solo dopo ogni battuta.";
+$("#mic-help").textContent = micHelp();
+let USER = ""; try { USER = localStorage.getItem(KEY + ".name") || ""; } catch {}
+const uname = () => USER || "Marco";
+function setUserName(nm) { USER = nm.charAt(0).toUpperCase() + nm.slice(1).toLowerCase(); try { localStorage.setItem(KEY + ".name", USER); } catch {} $("#uname").value = USER; }
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+/* ---- who the townspeople are ---- */
+const PROFILE = {
+  station: { full: "Raj Patel", short: "Raj", from: ["I'm from Leeds originally, but I've lived here for twenty years.", "Sono di Leeds, ma vivo qui da vent'anni."], today: ["I'm working here at the ticket office until six.", "Lavoro qui in biglietteria fino alle sei."], job: ["I sell tickets and help passengers find their trains.", "Vendo biglietti e aiuto i passeggeri a trovare il treno."], free: ["I love cricket. I watch it every weekend.", "Adoro il cricket. Lo guardo ogni weekend."], life: ["Can't complain! Busy, but good.", "Non mi lamento! Tanto da fare, ma bene."] },
+  cafe: { full: "Rosie", short: "Rosie", from: ["I was born right here in Millbrook!", "Sono nata proprio qui a Millbrook!"], today: ["Same as always, making coffee and cakes all day.", "Come sempre, caffè e torte tutto il giorno."], job: ["I run this little café on the High Street.", "Gestisco questo piccolo bar sulla High Street."], free: ["I like baking and walking my dog by the river.", "Mi piace fare dolci e portare il cane al fiume."], life: ["Pretty good, thanks. The café keeps me busy!", "Abbastanza bene, grazie. Il bar mi tiene impegnata!"] },
+  market: { full: "Tom", short: "Tom", from: ["I'm a Millbrook lad, born and bred.", "Sono di Millbrook, nato e cresciuto qui."], today: ["Selling fruit and veg until the market closes at four.", "Vendo frutta e verdura finché il mercato chiude alle quattro."], job: ["I've got a fruit and veg stall here at the market.", "Ho una bancarella di frutta e verdura qui al mercato."], free: ["I play football on Sundays with my mates.", "La domenica gioco a calcio con gli amici."], life: ["Not bad at all. Business is good this summer.", "Niente male. Quest'estate gli affari vanno bene."] },
+  pub: { full: "Fiona", short: "Fiona", from: ["I'm from Edinburgh, in Scotland.", "Sono di Edimburgo, in Scozia."], today: ["I'm meeting some friends here later for a quiz night.", "Più tardi vedo degli amici qui per una serata quiz."], job: ["I'm a nurse at the local hospital.", "Sono infermiera all'ospedale qui vicino."], free: ["I love hiking and live music.", "Adoro le escursioni e la musica dal vivo."], life: ["Really good, actually. I've just started a new job.", "Molto bene, in realtà. Ho appena iniziato un nuovo lavoro."] },
+  hotel: { full: "Gareth Hughes", short: "Gareth", from: ["I'm from Cardiff, in Wales.", "Sono di Cardiff, in Galles."], today: ["I'm on the evening shift at reception today.", "Oggi faccio il turno serale alla reception."], job: ["I'm the receptionist here at the Millbrook Arms.", "Sono il receptionist qui al Millbrook Arms."], free: ["I enjoy reading and cooking Italian food!", "Mi piace leggere e cucinare italiano!"], life: ["Very well, thank you. It's a busy season for the hotel.", "Molto bene, grazie. È un periodo pieno per l'hotel."] },
+  office: { full: "Sarah Collins", short: "Sarah", from: ["I grew up in London, but I moved here five years ago.", "Sono cresciuta a Londra, ma mi sono trasferita qui cinque anni fa."], today: ["I've got meetings all day, I'm afraid.", "Purtroppo ho riunioni tutto il giorno."], job: ["I'm the purchasing manager at Millbrook Trading.", "Sono la responsabile acquisti della Millbrook Trading."], free: ["I go running, and I'm learning to play the piano.", "Vado a correre e sto imparando a suonare il pianoforte."], life: ["Busy, but good. Work is going well.", "Piena di impegni, ma bene. Il lavoro va bene."] },
+  fair: { full: "David Okafor", short: "David", from: ["I'm from Birmingham.", "Sono di Birmingham."], today: ["I'm walking round the trade fair looking for new suppliers.", "Giro per la fiera cercando nuovi fornitori."], job: ["I'm a buyer for a chain of shops in the UK.", "Sono un buyer per una catena di negozi nel Regno Unito."], free: ["I'm a big fan of golf and travelling.", "Sono un grande appassionato di golf e di viaggi."], life: ["Great, thanks. Lots of travelling for work.", "Benissimo, grazie. Viaggio molto per lavoro."] },
+  phone: { full: "Mark Jones", short: "Mark", from: ["I'm from Bristol, down in the south-west.", "Sono di Bristol, nel sud-ovest."], today: ["I'm sorting out deliveries all day.", "Tutto il giorno a organizzare consegne."], job: ["I work in logistics. I organise deliveries.", "Lavoro nella logistica. Organizzo le consegne."], free: ["I like fishing and spending time with my kids.", "Mi piace pescare e stare con i miei figli."], life: ["Not bad, a bit hectic with all these deliveries!", "Non male, un po' frenetico con tutte queste consegne!"] },
+  pharmacy: { full: "Helen Green", short: "Helen", from: ["I'm from York, in the north of England.", "Sono di York, nel nord dell'Inghilterra."], today: ["I'm working in the pharmacy until five.", "Lavoro in farmacia fino alle cinque."], job: ["I'm a pharmacist here at the chemist's.", "Sono la farmacista di questa farmacia."], free: ["I love gardening and going to the theatre.", "Adoro il giardinaggio e andare a teatro."], life: ["Very well, thank you. Can't complain.", "Molto bene, grazie. Non mi lamento."] }
+};
+const P = n => PROFILE[n.p.id];
+const pickBy = (n, arr) => arr[n.vi % arr.length];
+
+/* ---- text helpers ---- */
+const norm = s => s.toLowerCase().replace(/[’`]/g, "'").replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+const EXP = [[/\bi'm\b/g, "i am"], [/\bit's\b/g, "it is"], [/\bthat's\b/g, "that is"], [/\bwhat's\b/g, "what is"], [/\bi've\b/g, "i have"], [/\bi'll\b/g, "i will"], [/\bdon't\b/g, "do not"], [/\bcan't\b/g, "cannot"], [/\bisn't\b/g, "is not"], [/\bname's\b/g, "name is"], [/\bhow's\b/g, "how is"], [/\bi'd\b/g, "i would"], [/\byou're\b/g, "you are"], [/\bwe're\b/g, "we are"], [/\bthey're\b/g, "they are"], [/\bdidn't\b/g, "did not"], [/\bdoesn't\b/g, "does not"], [/\bgot\b/g, "have"], [/\bgonna\b/g, "going to"]];
+const expand = s => EXP.reduce((a, [r, b]) => a.replace(r, b), norm(s));
+const wordsOf = s => expand(s).split(" ").filter(Boolean);
+const STOP = new Set("i a an the to and or of in on at for is am are be it you your my me we do does did can could would please thanks thank so just very yes no not with this that have has will".split(" "));
+const contentOf = s => wordsOf(s).filter(w => w.length > 2 && !STOP.has(w));
+function similarity(said, model) { const a = new Set(wordsOf(said)), b = wordsOf(model); if (!b.length) return 0; return b.filter(w => a.has(w)).length / b.length; }
+function keySim(said, model) { const c = contentOf(model); if (!c.length) return similarity(said, model); const a = new Set(wordsOf(said)); return c.filter(w => a.has(w)).length / c.length; }
+const ITALIAN = /\b(non|sono|come|cosa|che|grazie|bene|ciao|lavoro|oggi|vorrei|perche|anche|molto|questo|io|tu|buongiorno|sto|stai|faccio|aiuto|aiutami|so|della|delle|sei|mi|ti|ho|hai)\b/g;
+const isItalian = t => (t.match(ITALIAN) || []).length >= 2 && !/\b(the|you|is|are|i am|what)\b/.test(t);
+const HELP = /\b(help|i do not know|no idea|non so|aiuto|aiutami|what can i say|what should i say)\b/;
+const REPEAT = /\b(repeat|say (that|it) again|pardon|did not (understand|catch|get)|do not understand|slowly|slower|sorry what)\b|^(sorry|what|pardon)$/;
+const ASKBACK = /\b(and you|how about you|what about you|and yourself|what about yourself)\b/;
+
+/* ---- common mistakes Italian speakers make ---- */
+const ING = v => ({ run: "running", swim: "swimming", travel: "travelling", dance: "dancing", ski: "skiing", ride: "riding", drive: "driving", write: "writing", cycle: "cycling", shop: "shopping", sit: "sitting", get: "getting", make: "making", take: "taking", come: "coming" }[v] || v + "ing");
+const THIRD = v => ({ have: "has", go: "goes", do: "does", watch: "watches", study: "studies" }[v] || v + "s");
+const BASEV = v => ({ went: "go", saw: "see", did: "do", had: "have", made: "make", got: "get", ate: "eat", came: "come" }[v] || v);
+const GRAMMAR = [
+  [/\bi (have|got) (\d+|twenty|thirty|forty|fifty)( years)?\b/i, m => `I'm ${m[2]}`, "L'età si dice con il verbo essere: I'm 35 (years old), non 'I have 35 years'."],
+  [/\bi (am|'m) agree\b/i, () => "I agree", "Si dice 'I agree', senza 'am'."],
+  [/\b(since|from) (\d+|one|two|three|four|five|six|seven|eight|nine|ten|many|a few) (years|months|weeks|days)\b/i, m => `for ${m[2]} ${m[3]}`, "Per una durata si usa 'for': for two years. 'Since' va con un momento preciso: since 2020."],
+  [/\bi (like|love|hate|enjoy) (go|play|read|swim|cook|travel|watch|walk|run|dance|listen|work|study|eat|drink|visit|ski|ride|drive|write|cycle|shop|sit|make|take)\b/i, m => `I ${m[1]} ${ING(m[2].toLowerCase())}`, "Dopo like / love / enjoy il verbo prende -ing: I like reading."],
+  [/\bi work like\b/i, () => "I work as", "'Lavoro come…' si dice 'I work as a…', con 'as', non 'like'."],
+  [/\bpeople is\b/i, () => "people are", "'People' è plurale: people are."],
+  [/\bmore (better|bigger|easier|nicer|cheaper|faster|worse)\b/i, m => m[1], "'Better', 'bigger' ecc. sono già comparativi: niente 'more'."],
+  [/\b(go|going|come|coming) to home\b/i, m => `${m[1]} home`, "Con 'home' non si usa 'to': I go home."],
+  [/\bexplain me\b/i, () => "explain to me", "Si dice 'explain to me' o 'could you explain…'."],
+  [/\bdepends? of\b/i, () => "depends on", "Si dice 'it depends on'."],
+  [/\b(he|she) (have|go|do|like|work|live|want|need|play|watch|study)\b/i, m => `${m[1]} ${THIRD(m[2].toLowerCase())}`, "Con he / she il verbo al presente prende la -s: she works, he has."],
+  [/\b(in|at) the (monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i, m => `on ${cap(m[2])}`, "Con i giorni si usa 'on': on Monday."],
+  [/\bat the (morning|afternoon|evening)\b/i, m => `in the ${m[1]}`, "Si dice in the morning / in the afternoon / in the evening."],
+  [/\bwhat means\b/i, () => "what does … mean?", "Per chiedere un significato: What does 'X' mean?"],
+  [/\bi have (hungry|thirsty|cold|hot|sleepy)\b/i, m => `I'm ${m[1]}`, "Fame, sete, freddo e caldo si dicono con 'to be': I'm hungry, I'm cold."],
+  [/\bi stay (good|well|fine|bad)\b/i, m => `I'm ${m[1]}`, "'Sto bene' si dice I'm fine / I'm well, non 'I stay'."],
+  [/\b(make|do) a question\b/i, () => "ask a question", "'Fare una domanda' = ask a question."],
+  [/\b(going|go|come|coming) in (italy|england|london|rome|milan|naples|the city|the centre|the center)\b/i, m => `${m[1]} to ${m[2]}`, "Con i verbi di movimento si usa 'to': I'm going to London."],
+  [/\bhow (is|it is) called\b/i, () => "what's it called?", "'Come si chiama?' = What's it called?"],
+  [/\bi didn'?t (went|saw|did|had|made|got|ate|came)\b/i, m => `I didn't ${BASEV(m[1].toLowerCase())}`, "Dopo didn't il verbo va alla forma base: I didn't go."],
+  [/\bthe life is\b/i, () => "life is", "Per i concetti generali non si usa l'articolo: life is good."],
+  [/\bvery much (good|well)\b/i, m => `very ${m[1]}`, "Si dice semplicemente 'very good'."],
+  [/\bi am (\d+) years\b(?! old)/i, m => `I'm ${m[1]} years old`, "Si dice 'I'm 35' oppure 'I'm 35 years old'."],
+  [/\bi am italian man\b|\bi am an italian\b/i, () => "I'm Italian", "Per la nazionalità basta l'aggettivo: I'm Italian."],
+  [/\bi am (work|live|go|come|study)ing? from\b/i, m => `I ${m[1]}`, "Controlla la forma del verbo."],
+  [/\bi live here since\b/i, () => "I've lived here since", "Per una situazione che continua fino a oggi: present perfect. I've lived here since 2019."],
+  [/\bi am here since\b/i, () => "I've been here since", "Per 'sono qui da…' si usa il present perfect: I've been here since…"]
+];
+function checkGrammar(text) { const out = []; for (const [re, fix, why] of GRAMMAR) { const m = text.match(re); if (m) out.push({ wrong: m[0], right: fix(m), why }); } return out; }
+
+/* ---- the small-talk script: each topic knows how to ask, react and teach ---- */
+const GENERIC = [["Oh, I see!", "Ah, capisco!"], ["Oh, right!", "Ah, ok!"], ["Really? That's interesting.", "Davvero? Interessante."], ["Ah, nice!", "Ah, bello!"]];
+const TOPIC = {
+  greet: { label: "Saluto", ask: n => [`Hi there! I'm ${P(n).full}. Nice to meet you!`, `Ciao! Sono ${P(n).full}. Piacere di conoscerti!`],
+    match: (t, raw) => {
+      const nm = (raw.match(/\b(?:i'?m|i am|my name is|my name's|call me|it's)\s+([A-Za-zÀ-ÿ]+)/i) || [])[1];
+      if (nm && !(nm.toLowerCase() === uname().toLowerCase() && !USER) && !/^(fine|good|ok|okay|well|from|italian|here|a|an|the|very|so|not|happy|glad|pleased|sorry|great|new)$/i.test(nm)) { setUserName(nm); return { reply: [`Lovely to meet you, ${USER}!`, `Piacere mio, ${USER}!`] }; }
+      if (/\b(hi|hello|hey|nice|pleasure|pleased|good morning|good afternoon|good evening|morning|hiya)\b/.test(t)) return { reply: ["Lovely to meet you!", "Molto piacere!"], tip: "Bene! La prossima volta di' anche il tuo nome: \"I'm …\" oppure \"My name's …\"." };
+      return null;
+    },
+    models: n => [[`Hi! Nice to meet you too. I'm ${uname()}.`, `Ciao! Piacere mio. Sono ${uname()}.`], [`Hello ${P(n).short}! My name's ${uname()}. Nice to meet you.`, `Salve ${P(n).short}! Mi chiamo ${uname()}. Piacere.`], [`Hi, I'm ${uname()}. Pleased to meet you!`, `Ciao, sono ${uname()}. Lieto di conoscerti!`]],
+    tip: "Quando conosci qualcuno: \"Nice to meet you\" (solo la prima volta). Per dire il nome: \"I'm …\" o \"My name's …\"." },
+  again: { label: "Saluto", ask: n => [`Oh, hello again${USER ? ", " + USER : ""}! Nice to see you!`, `Oh, ciao di nuovo${USER ? ", " + USER : ""}! Che piacere vederti!`],
+    match: t => /\b(hi|hello|hey|nice|good|morning|afternoon|again|you too)\b/.test(t) ? { reply: ["Good to see you too!", "Anche per me!"] } : null,
+    models: n => [["Hi again! Nice to see you too.", "Ciao di nuovo! Piacere mio."], [`Hello ${P(n).short}! Good to see you again.`, `Ciao ${P(n).short}! Che bello rivederti.`]],
+    tip: "Con chi conosci già si dice \"Nice to see you\" (non \"nice to meet you\")." },
+  how: { backRe: /\bhow are you\b|\bhow is it going\b/, label: "Come stai", ask: n => pickBy(n, [["How are you today?", "Come stai oggi?"], ["So, how are you doing?", "Allora, come va?"], ["How's it going?", "Come va?"]]),
+    match: t => {
+      if (/\b(not bad|not too bad|cannot complain)\b/.test(t)) return { reply: ["Glad to hear it!", "Mi fa piacere!"] };
+      if (/\b(tired|bad|not (great|good|so good|very well|too good)|sick|ill|stressed|so so|terrible|awful|exhausted)\b/.test(t)) return { reply: ["Oh no, sorry to hear that. I hope your day gets better!", "Oh no, mi dispiace. Spero che la giornata migliori!"] };
+      if (/\b(good|fine|great|well|not bad|ok|okay|alright|all right|fantastic|brilliant|lovely|wonderful|super|excellent|happy|pretty good)\b/.test(t)) return { reply: ["Glad to hear it!", "Mi fa piacere!"] };
+      return null;
+    },
+    askBack: true, back: n => ["I'm very well, thanks for asking!", "Sto benissimo, grazie per avermelo chiesto!"],
+    models: n => [["I'm fine, thanks. And you?", "Bene, grazie. E tu?"], ["Not bad, thanks! How about you?", "Non male, grazie! E tu?"], ["I'm a bit tired today, but I'm OK. How are you?", "Oggi sono un po' stanco, ma sto bene. Tu come stai?"]],
+    tip: "Rispondi in breve e poi rimanda la domanda: \"And you?\" / \"How about you?\". È la regola d'oro della conversazione." },
+  today: { follow: "f_today", backRe: /\bwhat are you (doing|up to)\b|\bwhat about your day\b/, label: "Oggi", ask: n => ["So, what are you up to today?", "Allora, cosa fai di bello oggi?"],
+    match: t => {
+      if (/\b(english|learn|learning|study|studying|practi[cs]e|practi[cs]ing)\b/.test(t)) return { reply: ["Practising your English? Well done, you're doing really well!", "Fai pratica con l'inglese? Bravo, te la cavi benissimo!"] };
+      if (/\b(work|working|meeting|office|client|job|business)\b/.test(t)) return { reply: ["Oh, a working day! I hope it goes well.", "Ah, giornata di lavoro! Spero vada bene."] };
+      if (/\b(shop|shopping|buy|market)\b/.test(t)) return { reply: ["Ooh, a bit of shopping! The market's great today.", "Un po' di shopping! Oggi il mercato è bellissimo."] };
+      if (/\b(visit|visiting|walk|walking|explore|exploring|look around|looking around|see|sightseeing|tour|town)\b/.test(t)) return { reply: ["Lovely! Millbrook is a nice place to explore.", "Che bello! Millbrook è un bel posto da esplorare."] };
+      if (/\b(nothing|relax|relaxing|rest|coffee|chill|not much|friends|family|lunch|dinner)\b/.test(t)) return { reply: ["Sounds perfect. Everyone needs a quiet day!", "Perfetto. Tutti hanno bisogno di una giornata tranquilla!"] };
+      return null;
+    },
+    askBack: true, back: n => P(n).today,
+    models: n => [["I'm working today. I've got a meeting with a client.", "Oggi lavoro. Ho una riunione con un cliente."], ["I'm just looking around the town. What about you?", "Sto solo facendo un giro per il paese. E tu?"], ["Not much! I'm going to have a coffee and relax.", "Niente di che! Mi prendo un caffè e mi rilasso."]],
+    tip: "Per i programmi di oggi usa il present continuous: \"I'm working\", \"I'm meeting a friend\". \"What are you up to?\" = \"Cosa combini?\"." },
+  weather: { label: "Il meteo", ask: n => pickBy(n, [["Lovely weather today, isn't it?", "Bel tempo oggi, vero?"], ["It's a bit chilly today, isn't it?", "Fa un po' freschino oggi, vero?"], ["Nice and sunny today, isn't it?", "Bella giornata di sole oggi, vero?"]]),
+    match: t => {
+      if (/\b(no|not really|cold|chilly|rain|raining|rainy|windy|cloudy|grey|gray|freezing)\b/.test(t)) return { reply: ["True! Typical English weather, never perfect!", "Vero! Il classico tempo inglese, mai perfetto!"] };
+      if (/\b(yes|yeah|yep|it is|lovely|beautiful|nice|gorgeous|sunny|warm|great|perfect|fantastic|indeed|definitely|agree|true)\b/.test(t)) return { reply: ["It really is! Let's hope it lasts.", "Davvero! Speriamo che duri."] };
+      return null;
+    },
+    models: n => [["Yes, it is! Really nice.", "Sì, davvero! Molto bello."], ["It is! Much better than yesterday.", "Sì! Molto meglio di ieri."], ["Yes, lovely! I hope it stays like this.", "Sì, bellissimo! Spero che resti così."]],
+    tip: "Le domande con \"isn't it?\" in fondo chiedono solo conferma: rispondi \"Yes, it is!\" e aggiungi un commento. In Inghilterra il meteo è l'argomento numero uno." },
+  job: { backRe: /\bwhat do you do\b|\bwhat is your job\b/, label: "Il lavoro", ask: n => ["So, what do you do for a living?", "Allora, che lavoro fai?"],
+    match: t => /\b(work|job|sales|sell|selling|planning|planner|plan|manager|company|office|engineer|teacher|student|retired|business|logistics|factory|shop|accountant|doctor|nurse|driver|employee|boss|unemployed|freelance|commerce|trade|commercial)\b/.test(t) ? { reply: ["Oh, interesting!", "Ah, interessante!"], next: "enjoy" } : null,
+    askBack: true, back: n => P(n).job,
+    models: n => [["I work in sales and planning for a company in Italy.", "Lavoro nelle vendite e nella pianificazione per un'azienda in Italia."], ["I'm a planner. I organise orders and deliveries.", "Sono un pianificatore. Organizzo ordini e consegne."], ["I work for a manufacturing company. What about you?", "Lavoro per un'azienda manifatturiera. E tu?"]],
+    tip: "Per il lavoro: \"I work in sales\" (settore), \"I work as a planner\" (ruolo), \"I work for…\" (azienda). Mai \"I work like…\"." },
+  enjoy: { label: null, ask: n => ["Do you enjoy it?", "Ti piace?"],
+    match: t => {
+      if (/\b(no|not really|hate|boring|stress|stressful|hard|difficult|tired)\b/.test(t)) return { reply: ["Ah well, every job has its ups and downs!", "Eh beh, ogni lavoro ha i suoi alti e bassi!"] };
+      if (/\b(yes|yeah|love|like|enjoy|interesting|fun|good|great|most of the time|sometimes|ok|okay|it is)\b/.test(t)) return { reply: ["That's great. It makes such a difference!", "Fantastico. Fa davvero la differenza!"] };
+      return null;
+    },
+    models: n => [["Yes, I do! It's interesting and I meet a lot of people.", "Sì! È interessante e conosco tanta gente."], ["Most of the time, yes. It can be stressful, though.", "Quasi sempre sì. Però a volte è stressante."], ["It's OK. It's a bit busy at the moment.", "Va bene. Al momento c'è un po' da fare."]],
+    tip: "Alle domande sì/no rispondi \"Yes, I do\" / \"No, I don't\" e aggiungi un dettaglio: così la conversazione continua." },
+  life: { follow: "f_life", backRe: /\bhow is (life|everything)\b/, label: "La vita", ask: n => ["And how's life treating you these days?", "E come ti va la vita in questo periodo?"],
+    match: t => {
+      if (/\b(not bad|not too bad|cannot complain|not so bad)\b/.test(t)) return { reply: ["Good to hear! Busy is good, I suppose.", "Mi fa piacere! Essere impegnati è positivo, direi."] };
+      if (/\b(hard|difficult|stress|stressful|tired|bad|tough|not great|complicated)\b/.test(t)) return { reply: ["Oh, I'm sorry. Hang in there, things will get better!", "Mi dispiace. Tieni duro, le cose miglioreranno!"] };
+      if (/\b(good|great|fine|well|not bad|cannot complain|busy|ok|okay|alright|happy|fantastic|lovely)\b/.test(t)) return { reply: ["Good to hear! Busy is good, I suppose.", "Mi fa piacere! Essere impegnati è positivo, direi."] };
+      return null;
+    },
+    askBack: true, back: n => P(n).life,
+    models: n => [["Pretty good, thanks! Busy with work, but good.", "Abbastanza bene, grazie! Tanto lavoro, ma bene."], ["Not bad, I can't complain! And you?", "Non male, non mi lamento! E tu?"], ["A bit busy, to be honest, but I'm happy.", "Un po' di corsa, a dire il vero, ma sono contento."]],
+    tip: "\"I can't complain\" (non mi lamento) e \"to be honest\" (a dire il vero) sono espressioni molto naturali." },
+  free: { follow: "f_free", backRe: /\bfree time\b|\bwhat do you like\b|\byour hobbies\b/, label: "Tempo libero", ask: n => ["What do you like doing in your free time?", "Cosa ti piace fare nel tempo libero?"],
+    match: t => { const h = t.match(/\b(football|soccer|tennis|gym|running|swimming|cycling|reading|books|music|guitar|piano|travelling|traveling|travel|cooking|cook|family|friends|kids|children|walking|hiking|cinema|films|movies|tv|series|games|photography|fishing|dancing|sport|sports|beach|sea|mountains|read|swim|walk|run)\b/); return h ? { reply: [`Oh, ${h[1]}? That sounds great! I'd love to do that more.`, `Oh, ${h[1]}? Che bello! Mi piacerebbe farlo più spesso.`] } : null; },
+    askBack: true, back: n => P(n).free,
+    models: n => [["I like playing football and spending time with my family.", "Mi piace giocare a calcio e stare con la mia famiglia."], ["I love travelling and cooking for my friends.", "Adoro viaggiare e cucinare per i miei amici."], ["I enjoy reading and watching films. How about you?", "Mi piace leggere e guardare film. E tu?"]],
+    tip: "Dopo like / love / enjoy il verbo prende -ing: \"I like reading\", \"I love cooking\"." },
+  from: { follow: "f_from", backRe: /\bwhere are you from\b/, label: "Da dove vieni", ask: n => ["Where are you from, by the way?", "Di dove sei, a proposito?"],
+    match: t => { const m = t.match(/\b(italy|italian|rome|milan|naples|turin|florence|venice|sicily|sardinia|bologna|genoa|bari|palermo|puglia|calabria|campania|lombardy|tuscany|salerno|verona|caserta|avellino|benevento|potenza)\b/); if (m) return { reply: [`Oh, ${cap(m[1])}! I love Italy. The food is amazing!`, `Oh, ${cap(m[1])}! Adoro l'Italia. Il cibo è fantastico!`] }; if (/\bfrom\b/.test(t)) return { reply: ["Oh, lovely! I'd love to visit one day.", "Che bello! Mi piacerebbe visitarlo un giorno."] }; return null; },
+    askBack: true, back: n => P(n).from,
+    models: n => [["I'm from Italy, from Naples.", "Sono italiano, di Napoli."], ["I'm Italian. I live near Milan. What about you?", "Sono italiano. Vivo vicino a Milano. E tu?"], ["I'm from the south of Italy.", "Vengo dal sud Italia."]],
+    tip: "\"I'm from + città/paese\". Per la nazionalità: \"I'm Italian\", senza articolo." },
+  plans: { backRe: /\bany plans\b|\byour weekend\b|\bwhat about the weekend\b/, label: "Il weekend", ask: n => ["Have you got any plans for the weekend?", "Hai programmi per il fine settimana?"],
+    match: t => { if (/\b(going|visit|see|meet|trip|travel|party|dinner|beach|sea|family|friends|football|match|go)\b/.test(t)) return { reply: ["Ooh, that sounds fun! Have a great time.", "Che bello! Divertiti."] }; if (/\b(no|not really|nothing|relax|rest|stay|home|sleep)\b/.test(t)) return { reply: ["A quiet weekend sounds lovely, to be honest.", "Un weekend tranquillo, a dire il vero, sembra perfetto."] }; return null; },
+    askBack: true, back: n => ["I'm going to see my family on Sunday, I think.", "Domenica credo che andrò a trovare la mia famiglia."],
+    models: n => [["Yes, I'm going to visit my family.", "Sì, vado a trovare la mia famiglia."], ["Not really. I'm going to relax at home.", "Non proprio. Mi riposo a casa."], ["Yes! I'm going to the seaside with some friends.", "Sì! Vado al mare con degli amici."]],
+    tip: "Per i programmi usa \"I'm going to + verbo\": \"I'm going to visit my family\"." },
+  f_today: { label: null, ask: n => ["Sounds good! Anything fun planned for later?", "Bello! Qualcosa di divertente in programma per dopo?"],
+    match: t => /\b(no|not really|nothing|relax|home|rest)\b/.test(t) ? { reply: ["Fair enough, a quiet evening is lovely.", "Giusto, una serata tranquilla è bellissima."] } : (wordsOf(t).length > 1 ? { reply: ["Ooh, lovely! Have fun.", "Che bello! Divertiti."] } : null),
+    models: n => [["Yes, I'm going out for dinner with some friends.", "Sì, esco a cena con degli amici."], ["Not really, I'm just going to relax.", "Non proprio, mi rilasso e basta."], ["I might go to the cinema tonight.", "Forse stasera vado al cinema."]],
+    tip: "\"I might…\" = forse farò… È perfetto per i programmi incerti." },
+  f_free: { label: null, ask: n => ["Nice! How often do you do that?", "Bello! Ogni quanto lo fai?"],
+    match: t => /\b(every|once|twice|times|week|weekend|weekends|day|days|month|often|sometimes|always|usually|never)\b/.test(t) ? { reply: ["That's great. It's important to have time for yourself!", "Fantastico. È importante avere tempo per sé!"] } : null,
+    models: n => [["About twice a week.", "Circa due volte a settimana."], ["Every weekend, if I can.", "Ogni weekend, se riesco."], ["Not as often as I'd like!", "Non quanto vorrei!"]],
+    tip: "Per la frequenza: once a week (una volta a settimana), twice a week, every day, at the weekend." },
+  f_from: { label: null, ask: n => ["Oh lovely! What's it like there?", "Che bello! Com'è lì?"],
+    match: t => wordsOf(t).length > 1 ? { reply: ["It sounds amazing. I'd love to visit one day!", "Sembra fantastico. Mi piacerebbe andarci un giorno!"] } : null,
+    models: n => [["It's beautiful, and the food is amazing!", "È bellissimo e il cibo è fantastico!"], ["It's quite busy, but there's lots to do.", "È piuttosto caotico, ma c'è tanto da fare."], ["It's a small town by the sea. Very quiet.", "È un paesino sul mare. Molto tranquillo."]],
+    tip: "Per descrivere un posto: It's beautiful / busy / quiet / by the sea / in the mountains." },
+  f_life: { label: null, ask: n => ["What's keeping you busy at the moment?", "Cosa ti tiene impegnato in questo periodo?"],
+    match: t => wordsOf(t).length > 1 ? { reply: ["Oh, I know the feeling! I hope you get a break soon.", "Ti capisco! Spero tu riesca a staccare presto."] } : null,
+    models: n => [["Mostly work. We've got a big project at the moment.", "Soprattutto il lavoro. Abbiamo un grosso progetto in corso."], ["My family, and I'm learning English!", "La famiglia, e sto imparando l'inglese!"], ["Work and the kids, as usual!", "Lavoro e figli, come sempre!"]],
+    tip: "\"At the moment\" = in questo momento. Con il present continuous: I'm learning English at the moment." },
+  directions: { label: "Indicazioni", ask: n => { const d = pickBy(n, DEST); return [`By the way, I'm a bit lost. Do you know where ${d[0]} is?`, `A proposito, mi sono un po' perso. Sai dov'è ${d[1]}?`]; },
+    match: t => {
+      if (/\b(sorry|do not know|not sure|no idea|not from (here|around here)|new here)\b/.test(t)) return { reply: ["No worries! I'll ask someone else. Thanks anyway!", "Nessun problema! Chiederò a qualcun altro. Grazie lo stesso!"] };
+      if (/\b(straight|left|right|turn|next to|opposite|corner|along|down|past|near|behind|in front|high street|end of|over there|this way|that way|follow|cross|square|minutes|road|street)\b/.test(t)) return { reply: ["Brilliant, thank you so much! That's really helpful.", "Fantastico, grazie mille! Mi sei stato davvero utile."] };
+      return null;
+    },
+    models: n => [["Yes! Go straight along the High Street and it's on your left.", "Sì! Vai dritto lungo la High Street ed è sulla sinistra."], ["It's near the town square, next to the bank.", "È vicino alla piazza, accanto alla banca."], ["Sorry, I'm not from around here.", "Mi dispiace, non sono di qui."]],
+    tip: "Per dare indicazioni: go straight on (vai dritto), turn left / right (gira a sinistra / destra), it's next to… (è accanto a…), it's opposite… (di fronte a…), you can't miss it (non puoi sbagliare)." },
+  bye: { label: "Saluti", ask: n => ["Well, it was lovely chatting with you! Have a great day!", "Beh, è stato bello chiacchierare con te! Buona giornata!"],
+    match: t => /\b(bye|you too|see you|nice|thank|thanks|cheers|take care|great day|lovely|goodbye)\b/.test(t) ? { reply: ["Bye! See you around!", "Ciao! Ci vediamo in giro!"] } : null,
+    models: n => [["You too! It was nice talking to you. Bye!", "Anche a te! È stato bello parlare con te. Ciao!"], ["Thanks, you too! See you soon.", "Grazie, anche a te! A presto."], ["Thank you! Take care. Bye!", "Grazie! Stammi bene. Ciao!"]],
+    tip: "\"You too!\" = anche a te. \"Take care\" = stammi bene. \"See you around\" = ci vediamo in giro." }
+};
+// questions the learner may ask the townsperson at any moment
+function userQuestion(t, n) {
+  const p = P(n);
+  if (/\bwhat is your name\b/.test(t)) return [`I'm ${p.full}. Call me ${p.short}!`, `Sono ${p.full}. Chiamami ${p.short}!`];
+  if (/\bwhere are you from\b|\bwhere do you live\b/.test(t)) return p.from;
+  if (/\bwhat do you do\b|\bwhat is your job\b|\bwhere do you work\b/.test(t)) return p.job;
+  if (/\bwhat are you (doing|up to)\b|\byour plans\b/.test(t)) return p.today;
+  if (/\bfree time\b|\bhobbies\b|\bwhat do you like\b/.test(t)) return p.free;
+  if (/\bhow is (life|everything|work|it going)\b|\bhow are things\b/.test(t)) return p.life;
+  if (/\bhow are you\b|\bhow are you doing\b/.test(t)) return ["I'm very well, thanks for asking!", "Sto molto bene, grazie per avermelo chiesto!"];
+  if (/\bweather\b|\bgoing to rain\b/.test(t)) return ["Apparently it'll stay dry all day. Fingers crossed!", "Pare che resti asciutto tutto il giorno. Incrociamo le dita!"];
+  if (/\bwhat time is it\b|\bhave you got the time\b/.test(t)) { const d = new Date(); return [`It's ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}.`, `Sono le ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}.`]; }
+  return null;
+}
+// the place's own situation (ordering, buying a ticket, a meeting…) becomes part of the chat
+function placeTopics(n) {
+  const p = n.p;
+  return p.steps.map((s, i) => ({
+    label: i === 0 ? (p.type === "work" ? "Lavoro" : "La situazione") : null, place: true, last: i === p.steps.length - 1,
+    ask: () => s.npc,
+    models: () => s.opts.filter(o => o[2] > 0).sort((a, b) => b[2] - a[2]).map(o => [o[0], o[1]]),
+    tip: (s.opts.find(o => o[2] === 2) || [])[3] || "",
+    match: (t, raw) => {
+      let best = null;
+      for (const o of s.opts) { const sc = Math.max(keySim(raw, o[0]), similarity(raw, o[0]) * 0.9); if (!best || sc > best.sc) best = { o, sc }; }
+      if (best && best.sc >= 0.5) { if (best.o[2] === 0) return { bad: true, fb: best.o[3] }; return { reply: null, good: best.o[2] === 2, fb: best.o[3] }; }
+      return null;
+    }
+  }));
+}
+const DEST = [["the train station", "la stazione"], ["the Town Hall", "il municipio"], ["the Red Lion pub", "il pub Red Lion"], ["the chemist's", "la farmacia"], ["the post office", "l'ufficio postale"], ["the park", "il parco"], ["the market", "il mercato"], ["the Exhibition Centre", "il centro fiere"]];
+// active listening: the townsperson repeats back the key part of what you said
+const SWAP = { i: "you", me: "you", my: "your", mine: "yours", am: "are", we: "you", our: "your", us: "you", myself: "yourself" };
+const swapPron = s => s.split(" ").map(w => SWAP[w] || w).join(" ");
+const clip = s => swapPron(s.split(/\b(?:and|but|because|so|then|what about|how about|and you|you know)\b|,/)[0].trim());
+function reflect(raw) {
+  const t = expand(raw);
+  const pats = [
+    [/\bi work (in|as|for|at) (.{3,40})/, m => `Oh, you work ${m[1]} ${clip(m[2])}?`],
+    [/\bi (like|love|enjoy) (.{3,40})/, m => `Oh, you ${m[1]} ${clip(m[2])}?`],
+    [/\bi am from (.{3,30})/, m => `Oh, you're from ${clip(m[1]).replace(/\b\w/g, c => c.toUpperCase())}?`],
+    [/\bi am going to (.{3,40})/, m => `Ooh, you're going to ${clip(m[1])}?`],
+    [/\bi am (working|meeting|visiting|studying|learning|shopping|relaxing|walking|exploring|looking)(.{0,35})/, m => `Oh, you're ${m[1]}${clip(m[2]) ? " " + clip(m[2]) : ""}?`],
+    [/\bi have (?:a |an )?(meeting|appointment|interview|day off|holiday|presentation)(.{0,30})/, m => `Oh, you've got a ${m[1]}${clip(m[2]) ? " " + clip(m[2]) : ""}?`],
+    [/\bi am (?:a |an )(.{3,30})/, m => `Oh, you're a ${clip(m[1])}?`]
+  ];
+  // keep the learner's own capital letters (names, places)
+  const caps = {}; raw.split(/[^A-Za-zÀ-ÿ']+/).forEach(w => { if (/^[A-ZÀ-Ý]/.test(w)) caps[w.toLowerCase()] = w; });
+  for (const [re, f] of pats) { const m = t.match(re); if (m) { const out = f(m).replace(/\s+\?/, "?").replace(/[A-Za-zÀ-ÿ']+/g, (w, i) => i < 3 ? w : (caps[w.toLowerCase()] || w)); if (out.split(" ").length <= 10) return out; } }
+  return null;
+}
+const AL = /\b(really|sounds (great|good|nice|lovely|interesting|fun|amazing|brilliant)|interesting|wow|cool|how nice|that is (great|nice|lovely|amazing|interesting|brilliant)|lucky you|oh nice|brilliant|fantastic|i see|oh really)\b/;
+const VISITS_KEY = KEY + ".visits";
+function getVisits() { try { return JSON.parse(localStorage.getItem(VISITS_KEY)) || {}; } catch { return {}; } }
+function planFor(n) {
+  const v = getVisits(), k = v[n.p.id] || 0;
+  try { v[n.p.id] = k + 1; localStorage.setItem(VISITS_KEY, JSON.stringify(v)); } catch {}
+  const pool = ["today", "weather", "job", "life", "free", "from", "plans"];
+  const s = (k * 3 + n.vi) % pool.length;
+  const picks = [pool[s], pool[(s + 2) % pool.length], pool[(s + 4) % pool.length]];
+  if (n.p.stranger) return [k ? TOPIC.again : TOPIC.greet, TOPIC.how, TOPIC[picks[0]], TOPIC[picks[1]], TOPIC.directions, TOPIC.bye];
+  return [k ? TOPIC.again : TOPIC.greet, TOPIC.how, ...picks.map(x => TOPIC[x]), ...placeTopics(n), TOPIC.bye];
+}
+
+/* ---- conversation state & flow ---- */
+let C = null;
+const topic = () => C.plan[C.i];
+const npcVoice = () => ({ female: C.n.female, vi: C.n.vi, who: C.n.obj });
+const coachVoice = (extra = {}) => Object.assign({ female: !C.n.female, vi: 2, coach: true }, extra);
+const handsFree = () => $("#handsfree").checked && !micBlocked;
+function npcSay(en, it, listenAfter = true, slow = false) {
+  C.lastNpc = [en, it];
+  $("#d-npc").textContent = en;
+  const itEl = $("#d-npcit"); itEl.textContent = it || ""; itEl.hidden = true;
+  $("#translate").hidden = !it;
+  speak(en, Object.assign(npcVoice(), { slow, onend: () => { if (listenAfter && handsFree() && dialog && C && !C.done) setTimeout(() => startListening(true), 250); } }));
+}
+function renderTopics() {
+  const box = $("#topics"); box.innerHTML = "";
+  let cur = Math.min(C.i, C.plan.length - 1); while (cur > 0 && !C.plan[cur].label) cur--;
+  $("#d-npclbl").textContent = `${P(C.n).full} · ${C.done ? "fine" : C.plan[cur].label}`;
+  C.plan.forEach((b, i) => { if (!b.label) return; const c = el("span", "topic" + (i === cur && !C.done ? " now" : i < cur || C.done ? " done" : ""), (i < cur || C.done ? "✓ " : "") + b.label); box.append(c); });
+}
+function fbCard(kind, title) { const f = el("div", "fb " + kind); f.append(el("strong", null, title)); $("#d-fb").append(f); return f; }
+function modelList(models, withRepeat = true) {
+  const box = el("div", "models");
+  models.forEach(([en, it]) => {
+    const r = el("div", "model"); r.append(el("b", null, en));
+    const a = el("div", "acts");
+    const l = el("button", "mini", "Ascolta"); l.type = "button"; l.onclick = () => speak(en, coachVoice());
+    a.append(l);
+    if (withRepeat) { const rp = el("button", "mini", "Ripeti dopo di me"); rp.type = "button"; rp.onclick = () => repeatAfterMe([en, it]); a.append(rp); }
+    const u = el("button", "mini", "Usa"); u.type = "button"; u.onclick = () => { $("#say").value = en; $("#say").focus(); }; a.append(u);
+    r.append(a, el("small", null, it)); box.append(r);
+  });
+  return box;
+}
+function openDialog(n) {
+  dialog = n; for (const k in keys) keys[k] = false; guideTarget = null;
+  const p = n.p;
+  const dx = player.position.x - n.x, dz = player.position.z - n.z, L = Math.hypot(dx, dz) || 1;
+  const tx = n.x + dx / L * 1.45, tz = n.z + dz / L * 1.45; if (!blocked(tx, tz)) { player.position.x = tx; player.position.z = tz; }
+  PL.speed = 0;
+  if (!p.stranger && !MET.has(p.id)) { MET.add(p.id); saveMet(); updMet(); }
+  $("#d-name").textContent = p.stranger ? `${P(n).full} · a passeggio` : `${P(n).full} · ${p.en}`;
+  $("#d-role").textContent = p.stranger ? "Una persona a passeggio: due chiacchiere, e forse ti chiederà un'informazione." : `${p.npc.roleIt[0].toUpperCase() + p.npc.roleIt.slice(1)}. Prima due chiacchiere, poi ${p.type === "work" ? "si parla di lavoro" : "la situazione del posto"}.`;
+  $("#d-npclbl").textContent = P(n).full;
+  const phr = $("#phr"); phr.innerHTML = "";
+  [...p.phrases, ...p.idioms].forEach(([en, it]) => { const b = el("button"); b.type = "button"; b.textContent = en; b.title = it; b.onclick = () => { speak(en, { vi: 2, coach: true }); $("#d-note").textContent = `${en} = ${it}`; }; phr.append(b); });
+  const tip = $("#tip"); tip.innerHTML = ""; tip.append(el("b", null, "Buone maniere: "), document.createTextNode(p.manners.join(" ")));
+  $("#handsfree").checked = !micBlocked && (() => { try { return localStorage.getItem(KEY + ".hf") !== "0"; } catch { return true; } })();
+  $("#mic").disabled = micBlocked; $("#heard").textContent = micBlocked ? (MOBILE ? "Tocca la casella qui sotto, poi il microfono della tastiera, e parla in inglese." : "Clicca nella casella qui sotto e premi Windows + H (su Mac: due volte Fn) per dettare in inglese.") : "Tocca \"Parla\" e rispondi in inglese.";
+  $("#say").placeholder = micBlocked && MOBILE ? "Tocca qui → microfono della tastiera → parla" : "…oppure scrivi qui la tua risposta";
+  $("#heard").classList.remove("live");
+  $("#sheet").hidden = false; $("#prompt").hidden = true; document.body.classList.add("talking");
+  startChat(n);
+}
+function startChat(n, forceGuided) {
+  C = { n, plan: planFor(n), i: 0, done: false, mode: "coach", solo: 0, total: 0, helped: false, review: [], repeat: null, history: [], lastNpc: ["", ""], shared: false };
+  $("#d-fb").innerHTML = ""; $("#say").value = ""; $("#d-note").textContent = "";
+  $("#mode-btn").hidden = sampleState !== "ready";
+  $("#mode-btn").textContent = "Conversazione libera con l'AI";
+  // inside claude.ai the townspeople can hold a free conversation; otherwise the guided one
+  let preferAI = true; try { preferAI = localStorage.getItem(KEY + ".ai") !== "0"; } catch {}
+  if (sampleState === "ready" && preferAI && !forceGuided) return startAI();
+  renderTopics();
+  npcSay(...topic().ask(n));
+}
+function closeDialog() {
+  if (!C) return;
+  const n = C.n;
+  stopListening();
+  const bye = n.female ? ["Bye! Lovely to chat. See you around!", "Ciao! È stato bello chiacchierare. Ci vediamo!"] : ["Cheers, bye for now! See you around.", "Grazie, ciao per ora! Ci vediamo."];
+  if (!C.done) { speak(bye[0], { female: n.female, vi: n.vi, who: n.obj }); say(n.obj, bye[0], bye[1], 3500); }
+  n.lastGreet = T * 1000; if (n.walker) n.pause = 2;
+  $("#sheet").hidden = true; dialog = null; C = null; document.body.classList.remove("talking");
+}
+// everything the learner says (voice or keyboard) arrives here
+function userSaid(raw) {
+  raw = (raw || "").trim(); if (!raw || !C) return;
+  $("#say").value = "";
+  if (C.mode === "ai") return sendAI(raw);
+  if (C.done) return;
+  const t = expand(raw);
+  if (C.repeat) return checkRepeat(raw);
+  $("#d-fb").innerHTML = "";
+  const you = el("div", "line me"); you.append(el("div", "lbl", "Hai detto"), el("div", "en", raw)); $("#d-fb").append(you);
+  if (HELP.test(t)) return coach("Nessun problema! Ecco come puoi rispondere:");
+  if (isItalian(t)) return coach("Prova a dirlo in inglese! Per esempio:");
+  if (REPEAT.test(t) && wordsOf(raw).length <= 8) {
+    const f = fbCard("good", "Ottimo, hai chiesto di ripetere!"); f.append(document.createTextNode("\"Sorry, could you repeat that?\" o \"Could you say that again, please?\" sono le frasi perfette quando non capisci."));
+    return npcSay("Of course! " + C.lastNpc[0], "Certo! " + C.lastNpc[1], true, true);
+  }
+  answer(raw, false);
+}
+function answer(raw, fromRepeat) {
+  const n = C.n, b = topic(), t = expand(raw);
+  C.total++;
+  const errs = checkGrammar(raw);
+  let m = b.match(t, raw, n);
+  const askedBack = !!b.askBack && (ASKBACK.test(t) || (b.backRe && b.backRe.test(t)));
+  const q = !b.place && !askedBack ? userQuestion(t, n) : null;
+  if (!m && q) {
+    const f = fbCard("good", "Bella domanda!"); f.append(document.createTextNode("Fare domande tiene viva la conversazione. Ora rispondi tu alla sua domanda."));
+    showErrors(f, errs);
+    const [qa, qi] = b.ask(n);
+    return npcSay(`${q[0]} Anyway… ${qa}`, `${q[1]} Comunque… ${qi}`);
+  }
+  if (m && m.bad) {
+    const f = fbCard("bad", "Meglio dirlo in un altro modo"); f.append(el("div", null, m.fb));
+    f.append(el("div", "why", "Prova così:")); f.append(modelList(b.models(n).slice(0, 2)));
+    C.helped = true;
+    return npcSay("Sorry?", "Come, scusa?", true);
+  }
+  if (!m && b.place) {
+    // in a shop or a meeting, an off-topic answer gets a puzzled look and some help
+    const any = b.models(n).some(([en]) => keySim(raw, en) > 0) || /\b(please|could|can|would|thanks|thank|yes|no|sure|of course)\b/.test(t);
+    if (!any || wordsOf(raw).length < 2) {
+      const f = fbCard("ok", "Non c'entra molto con la situazione. Prova così:"); f.append(modelList(b.models(n).slice(0, 2)));
+      const [qa, qi] = b.ask(n);
+      return npcSay(`Sorry? ${qa}`, `Come, scusa? ${qi}`, true);
+    }
+  }
+  if (!m) {
+    if (wordsOf(raw).length < 2 && !askedBack) return coach("Risposta un po' corta: prova con una frase intera, per esempio:");
+    m = { reply: b.place ? null : pick(GENERIC), generic: true };
+  }
+  if (!C.helped && !fromRepeat) C.solo++;
+  // feedback for the learner
+  const clean = !errs.length && !m.generic;
+  const f = fbCard(clean ? "good" : "ok", clean ? pick(["Perfetto!", "Ottimo!", "Bravo, risposta naturale!"]) : errs.length ? "Ti ha capito! Correggiamo un dettaglio:" : "Ti ha capito.");
+  showErrors(f, errs);
+  if (b.place && m.fb) f.append(el("div", "why", m.fb));
+  if (m.generic || (b.place && !m.good)) { f.append(el("div", "why", "Potevi anche dire:")); f.append(modelList(b.models(n).slice(0, 2))); }
+  if (b.askBack && !askedBack) f.append(el("div", "why", "Consiglio: dopo la risposta rimanda la domanda con \"And you?\" o \"How about you?\"."));
+  if (m.tip) f.append(el("div", "why", m.tip));
+  if (AL.test(t)) f.append(el("div", "why", "Ottimo ascolto attivo: hai reagito a quello che ha detto!"));
+  else if (C.shared) f.append(el("div", "why", "Ascolto attivo: quando ti raccontano qualcosa, reagisci prima di rispondere, per esempio \"Oh, really?\", \"That sounds great!\", \"Lucky you!\"."));
+  C.shared = false;
+  if (C.helped) C.review.push(b.models(n)[0]);
+  // what the townsperson says next
+  let reply = m.reply ? m.reply.slice() : ["", ""];
+  const echo = !b.place && b !== TOPIC.directions ? reflect(raw) : null;
+  if (echo) reply = m.generic ? [`${echo} That sounds nice!`, "Ah, davvero? Che bello!"] : [`${echo} ${reply[0]}`, `Ah, davvero? ${reply[1]}`];
+  if (askedBack && b.back) { const bk = b.back(n); reply = [`${reply[0]} ${bk[0]}`.trim(), `${reply[1]} ${bk[1]}`.trim()]; C.shared = true; }
+  if (b.follow && !m.generic && rnd() < 0.7) C.plan.splice(C.i + 1, 0, TOPIC[b.follow]);
+  if (m.next) C.plan.splice(C.i + 1, 0, TOPIC[m.next]);
+  if (b.place && b.last) { reply = [`${reply[0]} ${n.p.end[0]}`.trim(), `${reply[1]} ${n.p.end[1]}`.trim()]; }
+  C.i++; C.helped = false;
+  if (C.i >= C.plan.length) { C.done = true; renderTopics(); npcSay(reply[0] || "Bye!", reply[1], false); return summary(); }
+  let [en, it] = topic().ask(n);
+  if (topic().place && !b.place) { en = `Anyway! ${en}`; it = `Comunque! ${it}`; }
+  renderTopics();
+  npcSay(`${reply[0]} ${en}`.trim(), `${reply[1]} ${it}`.trim());
+}
+function showErrors(f, errs) { errs.forEach(e => { const d = el("div", "err"); d.append(el("s", null, e.wrong), document.createTextNode(" → "), el("b", null, e.right)); f.append(d, el("div", "why", e.why)); }); }
+function coach(msg) {
+  if (!C || C.done || C.mode !== "coach") return;
+  stopListening();
+  const b = topic(), models = b.models(C.n);
+  C.helped = true;
+  const f = fbCard("ok", msg || "Ecco come puoi rispondere:");
+  f.append(modelList(models));
+  if (b.tip) f.append(el("div", "why", "Consiglio: " + b.tip));
+  f.append(el("div", "why", "Ascolta e ripeti la prima frase, oppure scegline un'altra con \"Ripeti dopo di me\"."));
+  repeatAfterMe(models[0]);
+}
+function repeatAfterMe(model) {
+  if (!C) return;
+  if (C.lastRep !== model) C.tries = 0;
+  C.lastRep = model; C.repeat = model;
+  $("#heard").textContent = `Ripeti: "${model[0]}"`; $("#heard").classList.remove("live");
+  speak(model[0], coachVoice({ onend: () => { if (C && C.repeat === model && !micBlocked) setTimeout(() => startListening(true), 250); } }));
+}
+function checkRepeat(raw) {
+  const model = C.repeat; C.repeat = null;
+  const sc = similarity(raw, model[0]);
+  $("#d-fb").innerHTML = "";
+  const you = el("div", "line me"); you.append(el("div", "lbl", "Hai detto"), el("div", "en", raw)); $("#d-fb").append(you);
+  // answered in their own words instead of repeating: that's even better
+  if (sc < 0.4 && !HELP.test(expand(raw)) && (topic().match(expand(raw), raw, C.n) || userQuestion(expand(raw), C.n))) return answer(raw, false);
+  const pct = Math.round(sc * 100);
+  if (sc >= 0.6) {
+    const f = fbCard("good", pct >= 90 ? "Perfetto, detto benissimo!" : `Bene! (${pct}% delle parole giuste)`);
+    f.append(el("div", null, `"${raw}"`));
+    answer(model[0], true);
+  } else {
+    C.tries = (C.tries || 0) + 1;
+    const missing = wordsOf(model[0]).filter(w => !new Set(wordsOf(raw)).has(w));
+    if (C.tries >= 2) { const f = fbCard("ok", "Va bene, andiamo avanti. La ripasseremo!"); f.append(el("div", null, `"${model[0]}"`)); C.review.push(model); return answer(sc >= 0.3 ? model[0] : raw, true); }
+    const f = fbCard("ok", `Quasi! (${pct}% delle parole giuste) Riascolta e riprova.`);
+    if (missing.length) f.append(el("div", "why", "Parole da curare: " + missing.slice(0, 6).join(", ")));
+    C.repeat = null; repeatAfterMe(model);
+  }
+}
+function summary() {
+  const f = fbCard("good", "Conversazione completata!");
+  f.append(el("div", null, `Hai risposto da solo a ${C.solo} battute su ${C.total}.`));
+  if (C.review.length) { f.append(el("div", "why", "Frasi da ripassare:")); f.append(modelList(C.review, false)); }
+  const row = el("div", "row"); row.style.marginTop = "8px";
+  const again = el("button", "btn", `Parla ancora con ${P(C.n).short}`); again.type = "button"; again.onclick = () => startChat(C.n);
+  const go = el("button", "btn primary", "Saluta e vai"); go.type = "button"; go.onclick = closeDialog;
+  row.append(again, go); f.append(row);
+}
+
+/* ---- microphone ---- */
+function setMicUI(on) { listening = on; $("#mic").classList.toggle("on", on); $("#mic-label").textContent = on ? "Ti ascolto" : "Parla"; }
+function stopListening() { if (rec && listening) { try { rec.abort(); } catch {} } setMicUI(false); }
+function startListening(auto) {
+  if (!SR || micBlocked || listening || !C) return;
+  if (!auto) stopSpeaking();
+  try { rec = new SR(); } catch { micBlocked = true; return; }
+  rec.lang = "en-GB"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  let finalText = "", heardAny = false;
+  const heard = $("#heard");
+  rec.onresult = ev => { userTalkingUntil = performance.now() + 900; let interim = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const tx = ev.results[i][0].transcript; if (ev.results[i].isFinal) finalText += tx; else interim += tx; } heardAny = true; heard.textContent = (finalText + interim).trim() || "…"; heard.classList.add("live"); };
+  rec.onerror = ev => {
+    if (["not-allowed", "service-not-allowed", "audio-capture"].includes(ev.error)) {
+      if (auto) { $("#d-note").textContent = "Tocca \"Parla\" per rispondere."; return; }
+      micBlocked = true; $("#mic").disabled = true; $("#handsfree").checked = false; $("#mic-help").textContent = micHelp();
+      $("#say").placeholder = MOBILE ? "Tocca qui → microfono della tastiera → parla" : "Clicca qui e premi Windows + H per dettare";
+      $("#d-note").textContent = (MOBILE ? "Qui il microfono è bloccato. Tocca la casella di testo e usa il microfono della tastiera per dettare in inglese." : "Il browser non lascia usare il microfono a questa pagina. Clicca nella casella di testo e premi Windows + H (su Mac: due volte il tasto Fn): parli in inglese e il testo si scrive da solo, poi premi Invia.") + ` (codice: ${ev.error})`;
+    } else if (ev.error === "network") $("#d-note").textContent = "Il riconoscimento vocale non riesce a collegarsi a internet. Controlla la connessione, oppure clicca nella casella e premi Windows + H per dettare. (codice: network)";
+    else if (ev.error === "no-speech") $("#d-note").textContent = "Non ho sentito niente. Tocca \"Parla\" quando sei pronto, oppure \"Non so cosa dire\".";
+  };
+  rec.onend = () => { setMicUI(false); heard.classList.remove("live"); if (finalText.trim()) userSaid(finalText); else if (!heardAny && !C?.repeat) heard.textContent = "Tocca \"Parla\" e rispondi in inglese."; };
+  try { rec.start(); setMicUI(true); heard.textContent = "Ti ascolto… parla in inglese."; $("#d-note").textContent = ""; }
+  catch { setMicUI(false); }
+}
+$("#mic").onclick = () => { if (listening) { try { rec.stop(); } catch {} return; } startListening(false); };
+$("#handsfree").onchange = () => { try { localStorage.setItem(KEY + ".hf", $("#handsfree").checked ? "1" : "0"); } catch {} };
+$("#send").onclick = () => userSaid($("#say").value);
+$("#say").addEventListener("input", () => { userTalkingUntil = performance.now() + 1500; });
+$("#say").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); userSaid($("#say").value); } });
+$("#help-say").onclick = () => { if (!C) return; if (C.mode === "ai") return aiSuggest(); $("#d-fb").innerHTML = ""; coach(); };
+$("#ask-repeat").onclick = () => { if (!C) return; stopListening(); const f = (($("#d-fb").innerHTML = ""), fbCard("good", "Quando non capisci, dillo così:")); f.append(modelList([["Sorry, could you repeat that, please?", "Scusa, puoi ripetere per favore?"], ["Sorry, could you speak more slowly?", "Scusa, puoi parlare più lentamente?"]], false)); npcSay(C.lastNpc[0], C.lastNpc[1], true, true); $("#d-npcit").hidden = false; };
+$("#bye").onclick = closeDialog;
+$("#talk-btn").onclick = () => { if (near) openDialog(near); };
+$("#replay").onclick = () => C && speak(C.lastNpc[0], npcVoice());
+$("#slow").onclick = () => C && speak(C.lastNpc[0], Object.assign(npcVoice(), { slow: true }));
+$("#translate").onclick = () => { const i = $("#d-npcit"); i.hidden = !i.hidden; };
+
+/* ---- optional free conversation with Claude (only inside claude.ai) ---- */
+function startAI() {
+  C.mode = "ai"; C.history = [{ role: "assistant", content: `Hi there! I'm ${P(C.n).short}. How are you today?` }];
+  $("#mode-btn").textContent = "Passa alla conversazione guidata"; $("#topics").innerHTML = ""; $("#d-fb").innerHTML = "";
+  $("#d-npclbl").textContent = `${P(C.n).full} · conversazione libera`;
+  npcSay(C.history[0].content, `Ciao! Sono ${P(C.n).short}. Come stai oggi?`);
+}
+$("#mode-btn").onclick = () => {
+  if (!C) return;
+  stopListening(); stopSpeaking();
+  const toAI = C.mode === "coach";
+  try { localStorage.setItem(KEY + ".ai", toAI ? "1" : "0"); } catch {}
+  if (toAI) startAI(); else startChat(C.n, true);
+};
+function aiRules(n) {
+  const p = n.p, pr = P(n);
+  return `You are role-playing as ${pr.full}, ${p.npc.role}, in Millbrook, a small English town. About you: ${pr.from[0]} ${pr.job[0]} ${pr.free[0]}
+Scene: ${p.scene}
+You are chatting with an adult Italian learner of English (around A2–B1) who wants to become confident in everyday conversation and small talk. Their messages come from speech recognition, so ignore punctuation and capital letters.
+How to talk: like a real person in a relaxed chat, in natural, friendly British English, simple (A2–B1), 1 to 3 short sentences that are read aloud (no lists, emojis or stage directions).
+Active listening: first react to what they just said and echo one detail (e.g. "Oh, you work in sales? That must keep you busy!"), then share a little about yourself, then ask ONE natural follow-up question about what they said. Move through everyday small talk (greetings, how are you, their day, the weather, work, life, free time, plans) and, when it fits, this place's situation. If they ask you something, answer it.
+Review ONLY the learner's latest message. Reply with only JSON:
+{"reply": "your answer in English", "reply_it": "Italian translation", "ok": true or false, "corrected": "a corrected, more natural version of the learner's message, or empty if ok", "note_it": "short explanation in Italian of the main mistake, or a tip about conversation or active listening (for example how to react, show interest or ask a follow-up question); may be empty"}`;
+}
+async function sendAI(text) {
+  if (!sample || C.busy) return;
+  const myC = C; C.busy = true;
+  $("#d-fb").innerHTML = ""; const you = el("div", "line me"); you.append(el("div", "lbl", "Hai detto"), el("div", "en", text)); $("#d-fb").append(you);
+  C.history.push({ role: "user", content: text });
+  $("#d-npc").textContent = `${P(C.n).short} ci pensa…`;
+  try {
+    const r = await sample.json([{ role: "user", content: aiRules(C.n) }, ...C.history.slice(-24)], { cache: false, modelTier: "quick" });
+    if (C !== myC) return;
+    const reply = r && typeof r.reply === "string" && r.reply.trim() ? r.reply.trim() : "Sorry, could you say that again?";
+    const f = fbCard(r && r.ok === false && r.corrected ? "ok" : "good", r && r.ok === false && r.corrected ? "Più naturale così:" : "Perfetto!");
+    if (r && r.ok === false && r.corrected) f.append(modelList([[r.corrected, ""]], true));
+    if (r && r.note_it) f.append(el("div", "why", r.note_it));
+    C.history.push({ role: "assistant", content: reply });
+    npcSay(reply, r && typeof r.reply_it === "string" ? r.reply_it : "");
+  } catch (e) {
+    if (C !== myC) return;
+    C.history.pop(); $("#d-npc").textContent = C.lastNpc[0];
+    $("#d-note").textContent = e && e.code === "rate_limited" ? "Troppe richieste in poco tempo. Aspetta un attimo." : "L'AI non ha risposto: passo alla conversazione guidata.";
+    if (e && ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(e.code)) { sampleState = "none"; $("#mode-btn").hidden = true; }
+    if (!(e && e.code === "rate_limited")) { C.busy = false; return startChat(C.n, true); }
+  } finally { if (C === myC) C.busy = false; }
+}
+async function aiSuggest() {
+  if (!sample || C.busy) return;
+  const myC = C; C.busy = true; $("#d-fb").innerHTML = ""; const f = fbCard("ok", "Cerco qualche idea…");
+  const tr = C.history.slice(-8).map(h => (h.role === "user" ? "Learner: " : P(C.n).short + ": ") + h.content).join("\n");
+  try {
+    const r = await sample.json(`An Italian learner of English (A2–B1) is chatting with ${P(C.n).full} in an English town.\nConversation:\n${tr}\nSuggest 3 short, natural things the learner could say next. Reply with only JSON: {"suggestions":[{"en":"...","it":"..."}]}`, { modelTier: "quick", cache: false });
+    if (C !== myC) return;
+    f.firstChild.textContent = "Puoi dire:";
+    f.append(modelList((r && Array.isArray(r.suggestions) ? r.suggestions : []).slice(0, 3).map(s => [String(s.en || ""), String(s.it || "")]), false));
+  } catch { if (C === myC) f.firstChild.textContent = "Nessun suggerimento ora. Riprova."; }
+  finally { if (C === myC) C.busy = false; }
+}
+
+/* ======================= START ======================= */
+$("#help-btn").onclick = () => { $("#help").hidden = false; };
+$("#help-close").onclick = () => { $("#help").hidden = true; speak("Welcome to Millbrook! Go and say hello to someone.", { female: true, vi: 1 }); };
+$("#uname").value = USER;
+$("#uname").addEventListener("change", () => { const v = $("#uname").value.trim().split(/\s+/)[0] || ""; if (v) setUserName(v); });
+$("#voice-test").onclick = () => speak("Hello! Welcome to Millbrook. Can you hear me?", { female: true, vi: 0 });
+updMet(); buildMiniBase();
+$("#load-bar").style.width = "30%"; $("#load-msg").textContent = "Arrivano gli abitanti… (la prima volta ci vuole qualche secondo)";
+const slowNote = setTimeout(() => { $("#load-msg").textContent = "Ci vuole un po' di più sul telefono… resta su questa pagina (meglio con il Wi-Fi)."; }, 25000);
+renderer.domElement.addEventListener("webglcontextlost", e => { e.preventDefault(); $("#loading").hidden = false; $("#load-msg").textContent = "Il telefono ha finito la memoria grafica. Chiudi le altre app e le altre schede, poi ricarica la pagina."; });
+loadCharacters().then(() => { clearTimeout(slowNote);
+  setupPeople(); camYaw = Math.PI;
+  let first = true; try { first = !localStorage.getItem(KEY + ".seen"); localStorage.setItem(KEY + ".seen", "1"); } catch {}
+  $("#help").hidden = !first;
+  $("#loading").hidden = true;
+  requestAnimationFrame(frame);
+}).catch(err => {
+  // never show stand-in dolls: explain and offer to try again
+  clearTimeout(slowNote); console.warn(err);
+  $("#load-msg").textContent = "Non sono riuscito a scaricare i personaggi. Controlla la connessione (meglio il Wi-Fi) e riprova.";
+  const b = el("button", "btn primary", "Riprova"); b.type = "button"; b.onclick = () => location.reload();
+  $("#load-msg").after(b);
+});
+</script>
+
+<script>if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});</script>
+</body>
+</html>
