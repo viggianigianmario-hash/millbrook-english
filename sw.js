@@ -1,5 +1,5 @@
 // Keeps the game and its characters on the device after the first visit, so it opens fast.
-const CACHE = "millbrook-v2";
+const CACHE = "millbrook-v3";
 self.addEventListener("install", e => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", e => {

@@ -1188,15 +1188,17 @@ function makePerson(model) {
   }
   return g;
 }
-const LOCO = { walk: 1.35, run: 3.9 };
+const LOCO = { walk: 1.3, run: 3.4 };            // how fast you move
+const NAT = { m: { walk: 1.01, run: 2.88 }, f: { walk: 1.21, run: 2.77 } }; // speed the recorded steps were made at
 // Body: blend walking/running from speed; when standing, cross-fade between idle, talking, listening and waving.
 function animate(o, speed, dt) {
   const u = o.userData; if (!u.real) return;
   const tw = {}; for (const k in u.acts) tw[k] = 0;
   if (u.mode === "wave" && u.acts.wave) { u.modeT += dt; if (u.modeT > u.acts.wave.getClip().duration - 0.3) setMode(o, "idle"); }
+  const nat = u.female ? NAT.f : NAT.m, top = nat.walk * 1.3;
   if (speed > 0.05) {
-    if (speed <= LOCO.walk) { const k = Math.min(1, speed / (LOCO.walk * 0.5)); tw.idle = 1 - k; tw.walk = k; }
-    else { const k = Math.min(1, (speed - LOCO.walk) / (LOCO.run - LOCO.walk)); tw.walk = 1 - k; tw.run = k; }
+    if (speed <= top) { const k = Math.min(1, speed / (nat.walk * 0.45)); tw.idle = 1 - k; tw.walk = k; }
+    else { const k = Math.min(1, (speed - top) / (LOCO.run - top)); tw.walk = 1 - k; tw.run = k; }
   } else if (u.mode === "talk") tw[u.talkClip] = 1;
   else if (u.mode === "listen") tw[u.acts.listen ? "listen" : "idle"] = 1;
   else if (u.mode === "wave") tw.wave = 1;
@@ -1207,8 +1209,10 @@ function animate(o, speed, dt) {
     if (u.w[k] < 0.002 && !tw[k]) u.w[k] = 0;
     u.acts[k].setEffectiveWeight(u.w[k]);
   }
-  if (u.acts.walk) u.acts.walk.timeScale = speed > 0.05 ? Math.max(0.6, Math.min(1.5, speed / LOCO.walk)) : 1;
-  if (u.acts.run) u.acts.run.timeScale = speed > LOCO.walk ? Math.max(0.8, Math.min(1.3, speed / LOCO.run)) : 1;
+  // steps follow the real speed, so feet don't slide; walking and running stay in step while blending
+  if (u.acts.walk) u.acts.walk.timeScale = speed > 0.05 ? Math.max(0.6, Math.min(1.45, speed / nat.walk)) : 1;
+  if (u.acts.run) u.acts.run.timeScale = Math.max(0.85, Math.min(1.3, speed / nat.run));
+  if (u.acts.walk && u.acts.run && u.w.run > 0.01 && u.w.walk > 0.01) u.acts.run.time = (u.acts.walk.time / u.acts.walk.getClip().duration) * u.acts.run.getClip().duration;
   // change idle variety now and then
   u.modeT += dt;
   if (u.mode === "idle" && u.modeT > 9 + rnd() * 8) { u.modeT = 0; u.idleClip = pick(["idle", "idle", "idle2", "look"].filter(k => u.acts[k])); }
@@ -1481,7 +1485,7 @@ function frame() {
     target = (run ? LOCO.run : LOCO.walk) * mag;
   }
   const turnGap = Math.abs(angDiff(player.rotation.y, PL.dir));
-  if (mag > 0.08) player.rotation.y = angleTo(player.rotation.y, PL.dir, Math.min(1, dt * (PL.speed > 2.5 ? 5 : 8)));
+  if (mag > 0.08) player.rotation.y = angleTo(player.rotation.y, PL.dir, Math.min(1, dt * (PL.speed > 2.5 ? 4 : 6)));
   if (turnGap > 1.6) target *= 0.35;
   PL.speed += (target - PL.speed) * Math.min(1, dt * (target > PL.speed ? 3.2 : 6));
   if (PL.speed < 0.02) PL.speed = 0;
