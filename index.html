@@ -191,6 +191,8 @@ body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { disp
   .talkside .row { flex-wrap: nowrap; }
   .talkside .btn { padding: 6px 10px; font-size: 13px; }
 }
+.level { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: -4px; }
+.level i { display: block; height: 100%; width: 0; background: var(--hedge); transition: width .08s linear; }
 </style>
 
 <div id="app">
@@ -238,6 +240,7 @@ body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { disp
         <button class="mic" id="mic" type="button" aria-label="Parla al microfono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="mic-label">Parla</span></button>
         <div class="talkside">
           <div class="heard" id="heard">Tocca "Parla" e rispondi in inglese.</div>
+          <div class="level" aria-hidden="true"><i id="mic-level"></i></div>
           <div class="row">
             <button class="btn" id="help-say" type="button">Non so cosa dire</button>
             <button class="btn" id="ask-repeat" type="button">Non ho capito</button>
@@ -282,7 +285,7 @@ body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { disp
       <label class="name-field">Come ti chiami? <input id="uname" type="text" autocomplete="given-name" placeholder="Il tuo nome"></label>
       <p class="note">Alza il volume e togli il silenzioso: i personaggi parlano. Se non senti nulla, guarda l'indicatore "Voce" in alto a sinistra.</p>
       <p class="note" id="mic-help"></p>
-      <div class="row"><button class="btn" id="voice-test" type="button">Prova la voce</button><button class="btn primary" id="help-close" type="button">Inizia a esplorare</button></div>
+      <div class="row"><button class="btn" id="voice-test" type="button">Prova la voce</button><button class="btn" id="mic-test" type="button">Prova il microfono</button><button class="btn primary" id="help-close" type="button">Inizia a esplorare</button></div>
     </div>
   </div>
 </div>
@@ -1848,7 +1851,8 @@ function npcSay(en, it, listenAfter = true, slow = false) {
   $("#d-npc").textContent = en;
   const itEl = $("#d-npcit"); itEl.textContent = it || ""; itEl.hidden = true;
   $("#translate").hidden = !it;
-  speak(en, Object.assign(npcVoice(), { slow, onend: () => { if (listenAfter && handsFree() && dialog && C && !C.done) setTimeout(() => startListening(true), 250); } }));
+  stopListening();
+  speak(en, Object.assign(npcVoice(), { slow, onend: () => { if (listenAfter && handsFree() && dialog && C && !C.done) setTimeout(() => startListening(true), 300); } }));
 }
 function renderTopics() {
   const box = $("#topics"); box.innerHTML = "";
@@ -1888,6 +1892,7 @@ function openDialog(n) {
   $("#say").placeholder = micBlocked && MOBILE ? "Tocca qui → microfono della tastiera → parla" : "…oppure scrivi qui la tua risposta";
   $("#heard").classList.remove("live");
   $("#sheet").hidden = false; $("#prompt").hidden = true; document.body.classList.add("talking");
+  if (SR && !micBlocked) ensureMic();
   startChat(n);
 }
 function startChat(n, forceGuided) {
@@ -1905,6 +1910,7 @@ function closeDialog() {
   if (!C) return;
   const n = C.n;
   stopListening();
+  if (MIC.stream) { MIC.stream.getTracks().forEach(t => t.stop()); MIC.stream = null; try { MIC.ctx && MIC.ctx.close(); } catch {} MIC.ctx = null; MIC.an = null; }
   const bye = n.female ? ["Bye! Lovely to chat. See you around!", "Ciao! È stato bello chiacchierare. Ci vediamo!"] : ["Cheers, bye for now! See you around.", "Grazie, ciao per ora! Ci vediamo."];
   if (!C.done) { speak(bye[0], { female: n.female, vi: n.vi, who: n.obj }); say(n.obj, bye[0], bye[1], 3500); }
   n.lastGreet = T * 1000; if (n.walker) n.pause = 2;
@@ -2039,30 +2045,94 @@ function summary() {
 }
 
 /* ---- microphone ---- */
+// The townsperson listens continuously while it's your turn: words appear as you speak,
+// and after a short pause what you said is sent. While they talk, the mic pauses (so it doesn't hear them).
+const MIC = { rec: null, on: false, stopped: true, final: "", interim: "", timer: null, stream: null, ctx: null, an: null, raf: 0, denied: false };
 function setMicUI(on) { listening = on; $("#mic").classList.toggle("on", on); $("#mic-label").textContent = on ? "Ti ascolto" : "Parla"; }
-function stopListening() { if (rec && listening) { try { rec.abort(); } catch {} } setMicUI(false); }
-function startListening(auto) {
-  if (!SR || micBlocked || listening || !C) return;
-  if (!auto) stopSpeaking();
-  try { rec = new SR(); } catch { micBlocked = true; return; }
-  rec.lang = "en-GB"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-  let finalText = "", heardAny = false;
-  const heard = $("#heard");
-  rec.onresult = ev => { userTalkingUntil = performance.now() + 900; let interim = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const tx = ev.results[i][0].transcript; if (ev.results[i].isFinal) finalText += tx; else interim += tx; } heardAny = true; heard.textContent = (finalText + interim).trim() || "…"; heard.classList.add("live"); };
-  rec.onerror = ev => {
-    if (["not-allowed", "service-not-allowed", "audio-capture"].includes(ev.error)) {
-      if (auto) { $("#d-note").textContent = "Tocca \"Parla\" per rispondere."; return; }
-      micBlocked = true; $("#mic").disabled = true; $("#handsfree").checked = false; $("#mic-help").textContent = micHelp();
-      $("#say").placeholder = MOBILE ? "Tocca qui → microfono della tastiera → parla" : "Clicca qui e premi Windows + H per dettare";
-      $("#d-note").textContent = (MOBILE ? "Qui il microfono è bloccato. Tocca la casella di testo e usa il microfono della tastiera per dettare in inglese." : "Il browser non lascia usare il microfono a questa pagina. Clicca nella casella di testo e premi Windows + H (su Mac: due volte il tasto Fn): parli in inglese e il testo si scrive da solo, poi premi Invia.") + ` (codice: ${ev.error})`;
-    } else if (ev.error === "network") $("#d-note").textContent = "Il riconoscimento vocale non riesce a collegarsi a internet. Controlla la connessione, oppure clicca nella casella e premi Windows + H per dettare. (codice: network)";
-    else if (ev.error === "no-speech") $("#d-note").textContent = "Non ho sentito niente. Tocca \"Parla\" quando sei pronto, oppure \"Non so cosa dire\".";
-  };
-  rec.onend = () => { setMicUI(false); heard.classList.remove("live"); if (finalText.trim()) userSaid(finalText); else if (!heardAny && !C?.repeat) heard.textContent = "Tocca \"Parla\" e rispondi in inglese."; };
-  try { rec.start(); setMicUI(true); heard.textContent = "Ti ascolto… parla in inglese."; $("#d-note").textContent = ""; }
-  catch { setMicUI(false); }
+function micHelpText(code) {
+  if (code === "not-allowed" || code === "service-not-allowed" || code === "NotAllowedError")
+    return "Il microfono è bloccato per questo sito. Clicca sul lucchetto (o sull'icona a sinistra dell'indirizzo), metti Microfono su \"Consenti\" e ricarica la pagina.";
+  if (code === "audio-capture" || code === "NotFoundError") return "Non trovo un microfono collegato. Controlla che sia attaccato e scelto in Windows (Impostazioni → Sistema → Audio → Input).";
+  if (code === "network") return "Il riconoscimento vocale di Chrome ha bisogno di internet. Controlla la connessione e riprova.";
+  return "";
 }
-$("#mic").onclick = () => { if (listening) { try { rec.stop(); } catch {} return; } startListening(false); };
+// ask for the microphone once, during a click, and show a live volume bar while listening
+async function ensureMic() {
+  if (MIC.stream) return true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return true;
+  try {
+    MIC.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    try { MIC.ctx = new (window.AudioContext || window.webkitAudioContext)(); MIC.an = MIC.ctx.createAnalyser(); MIC.an.fftSize = 512; MIC.ctx.createMediaStreamSource(MIC.stream).connect(MIC.an); } catch {}
+    return true;
+  } catch (e) {
+    MIC.denied = true; micBlocked = true; $("#mic").disabled = true; $("#handsfree").checked = false;
+    $("#d-note").textContent = micHelpText(e.name) || "Non riesco ad accedere al microfono.";
+    return false;
+  }
+}
+function meter() {
+  cancelAnimationFrame(MIC.raf);
+  const bar = $("#mic-level"); if (!bar) return;
+  if (!MIC.on || !MIC.an) { bar.style.width = "0%"; return; }
+  const d = new Uint8Array(MIC.an.fftSize); MIC.an.getByteTimeDomainData(d);
+  let peak = 0; for (const v of d) peak = Math.max(peak, Math.abs(v - 128));
+  bar.style.width = Math.min(100, peak * 1.6) + "%";
+  MIC.raf = requestAnimationFrame(meter);
+}
+function stopListening() {
+  MIC.stopped = true; clearTimeout(MIC.timer);
+  if (MIC.rec) { try { MIC.rec.abort(); } catch {} }
+  MIC.on = false; setMicUI(false); meter();
+}
+function finishUtterance() {
+  clearTimeout(MIC.timer);
+  const text = (MIC.final + " " + MIC.interim).replace(/\s+/g, " ").trim();
+  MIC.final = ""; MIC.interim = "";
+  stopListening();
+  $("#heard").classList.remove("live");
+  if (text) userSaid(text);
+}
+async function startListening(auto) {
+  if (!SR || micBlocked || MIC.on || !C || C.done || !dialog) return;
+  if (!auto) stopSpeaking();
+  if (!(await ensureMic())) return;
+  if (MIC.ctx && MIC.ctx.state === "suspended") { try { await MIC.ctx.resume(); } catch {} }
+  let rec; try { rec = new SR(); } catch { micBlocked = true; return; }
+  MIC.rec = rec; MIC.final = ""; MIC.interim = ""; MIC.stopped = false;
+  rec.lang = "en-GB"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+  const heard = $("#heard"), who = C ? P(C.n).short : "";
+  rec.onstart = () => { MIC.startedAt = performance.now(); MIC.on = true; setMicUI(true); heard.textContent = `${who} ti ascolta… parla in inglese.`; heard.classList.add("live"); $("#d-note").textContent = ""; meter(); };
+  rec.onresult = ev => {
+    if (rec !== MIC.rec) return;
+    userTalkingUntil = performance.now() + 900;
+    let interim = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) { const tx = ev.results[i][0].transcript; if (ev.results[i].isFinal) MIC.final += tx + " "; else interim += tx; }
+    MIC.interim = interim;
+    heard.textContent = (MIC.final + interim).trim() || "…";
+    clearTimeout(MIC.timer); MIC.timer = setTimeout(finishUtterance, 1400); // a short pause ends your turn
+  };
+  rec.onerror = ev => {
+    if (rec !== MIC.rec) return;
+    if (["not-allowed", "service-not-allowed", "audio-capture"].includes(ev.error)) {
+      if (auto && ev.error === "not-allowed" && !MIC.stream) { $("#d-note").textContent = "Tocca \"Parla\" per rispondere."; return; }
+      micBlocked = true; $("#mic").disabled = true; $("#handsfree").checked = false; $("#mic-help").textContent = micHelp();
+      $("#d-note").textContent = micHelpText(ev.error) + ` (codice: ${ev.error})`;
+    } else if (ev.error === "network") $("#d-note").textContent = micHelpText("network") + " (codice: network)";
+  };
+  rec.onend = () => {
+    if (rec !== MIC.rec) return;
+    MIC.on = false; setMicUI(false); meter();
+    if ((MIC.final + MIC.interim).trim()) return finishUtterance();
+    // Chrome closes the mic after some silence: keep listening while it's your turn
+    // …but if it keeps closing straight away, something is wrong: stop and say so
+    MIC.quick = performance.now() - (MIC.startedAt || 0) < 1200 ? (MIC.quick || 0) + 1 : 0;
+    if (MIC.quick >= 3) { MIC.quick = 0; heard.classList.remove("live"); heard.textContent = "Tocca \"Parla\" e rispondi in inglese."; if (!$("#d-note").textContent) $("#d-note").textContent = "Il microfono si chiude subito: controlla la connessione a internet e il permesso del microfono, poi tocca \"Parla\"."; return; }
+    if (!MIC.stopped && !micBlocked && handsFree() && dialog && C && !C.done && !isSpeakingAny()) setTimeout(() => startListening(true), 250);
+    else { heard.classList.remove("live"); if (!C?.repeat) heard.textContent = "Tocca \"Parla\" e rispondi in inglese."; }
+  };
+  try { rec.start(); } catch { setMicUI(false); }
+}
+$("#mic").onclick = () => { if (MIC.on) { if ((MIC.final + MIC.interim).trim()) finishUtterance(); else stopListening(); return; } startListening(false); };
 $("#handsfree").onchange = () => { try { localStorage.setItem(KEY + ".hf", $("#handsfree").checked ? "1" : "0"); } catch {} };
 $("#send").onclick = () => userSaid($("#say").value);
 $("#say").addEventListener("input", () => { userTalkingUntil = performance.now() + 1500; });
@@ -2140,6 +2210,18 @@ $("#help-btn").onclick = () => { $("#help").hidden = false; };
 $("#help-close").onclick = () => { $("#help").hidden = true; speak("Welcome to Millbrook! Go and say hello to someone.", { female: true, vi: 1 }); };
 $("#uname").value = USER;
 $("#uname").addEventListener("change", () => { const v = $("#uname").value.trim().split(/\s+/)[0] || ""; if (v) setUserName(v); });
+$("#mic-test").onclick = async () => {
+  const out = $("#mic-help");
+  if (!SR) { out.textContent = "Questo browser non ha il riconoscimento vocale. Usa Chrome o Edge (su iPhone: Safari)."; return; }
+  out.textContent = "Chiedo il permesso del microfono…";
+  try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); }
+  catch (e) { out.textContent = micHelpText(e.name) || ("Microfono non disponibile: " + e.name); return; }
+  const r = new SR(); r.lang = "en-GB"; r.interimResults = true;
+  out.textContent = "Ora di' in inglese: \"Hello, how are you?\"";
+  r.onresult = ev => { out.textContent = "Ho sentito: \"" + Array.from(ev.results).map(x => x[0].transcript).join("") + "\" — il microfono funziona!"; };
+  r.onerror = ev => { out.textContent = (micHelpText(ev.error) || "Errore del microfono.") + " (codice: " + ev.error + ")"; };
+  try { r.start(); } catch (e) { out.textContent = "Non riesco ad avviare il microfono: " + e.message; }
+};
 $("#voice-test").onclick = () => speak("Hello! Welcome to Millbrook. Can you hear me?", { female: true, vi: 0 });
 updMet(); buildMiniBase();
 $("#load-bar").style.width = "30%"; $("#load-msg").textContent = "Arrivano gli abitanti… (la prima volta ci vuole qualche secondo)";
