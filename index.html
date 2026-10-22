@@ -2345,6 +2345,30 @@ loadCharacters().then(() => { clearTimeout(slowNote);
 });
 </script>
 
-<script>if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});</script>
+<script>
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+// one-tap install: Android/PC get the browser's install dialog, iPhone gets the two steps to follow
+(function () {
+  const standalone = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches || navigator.standalone;
+  if (standalone) return;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  let promptEvent = null;
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "small-btn"; btn.textContent = "Installa l'app"; btn.hidden = true;
+  btn.style.background = "#1D2A23"; btn.style.color = "#fff";
+  const tr = document.querySelector(".hud.tr"); if (tr) tr.prepend(btn);
+  addEventListener("beforeinstallprompt", e => { e.preventDefault(); promptEvent = e; btn.hidden = false; });
+  addEventListener("appinstalled", () => { btn.hidden = true; });
+  if (ios) btn.hidden = false;
+  btn.onclick = async () => {
+    if (promptEvent) { promptEvent.prompt(); await promptEvent.userChoice.catch(() => {}); promptEvent = null; btn.hidden = true; return; }
+    const help = document.getElementById("help"), ol = help && help.querySelector("ol");
+    if (ol) { ol.innerHTML = ios
+      ? "<li>Tocca il pulsante <b>Condividi</b> di Safari (il quadrato con la freccia in su).</li><li>Scorri e tocca <b>Aggiungi alla schermata Home</b>, poi <b>Aggiungi</b>.</li><li>Apri Millbrook dall'icona sulla schermata Home.</li>"
+      : "<li>Apri il menu del browser (i tre puntini in alto a destra).</li><li>Tocca <b>Installa app</b> (o <b>Aggiungi a schermata Home</b>).</li><li>Apri Millbrook dall'icona.</li>";
+      help.querySelector("h2").textContent = "Installa Millbrook"; help.hidden = false; }
+  };
+})();
+</script>
 </body>
 </html>
