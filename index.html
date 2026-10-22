@@ -193,6 +193,10 @@ body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { disp
 }
 .level { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: -4px; }
 .level i { display: block; height: 100%; width: 0; background: var(--hedge); transition: width .08s linear; }
+.topic-pick { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border: 1.5px dashed var(--slate); border-radius: 12px; background: var(--me); }
+.topic-pick p { width: 100%; margin: 0 0 2px; font-size: 13px; color: var(--muted); }
+.topic-pick button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 14px; font-weight: 700; }
+.topic-pick button:hover { border-color: var(--ink); }
 </style>
 
 <div id="app">
@@ -235,6 +239,7 @@ body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { disp
           <button class="mini" id="translate" type="button">Traduci</button>
         </div>
       </div>
+      <div class="topic-pick" id="topic-pick" hidden></div>
       <div class="fbwrap" id="d-fb"></div>
       <div class="talkbar">
         <button class="mic" id="mic" type="button" aria-label="Parla al microfono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="mic-label">Parla</span></button>
@@ -252,7 +257,8 @@ body.talking .tl, body.talking .tr, body.talking .keys, body.talking .joy { disp
         <button class="btn primary" id="send" type="button">Invia</button>
       </div>
       <div class="row">
-        <label class="check"><input type="checkbox" id="handsfree"> Mani libere: ti ascolto da solo quando ha finito di parlare</label>
+        <input type="checkbox" id="handsfree" hidden>
+        <button class="mini" id="topic-btn" type="button">Cambia argomento</button>
         <button class="mini" id="mode-btn" type="button" hidden>Conversazione libera con l'AI</button>
       </div>
       <p class="note" id="d-note"></p>
@@ -1595,7 +1601,7 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let micBlocked = !SR, rec = null, listening = false;
 const micHelp = () => micBlocked
   ? "Microfono: se il pulsante \"Parla\" non funziona, tocca la casella di testo e usa il microfono della tastiera del telefono (dettatura). Parli in inglese e il testo si scrive da solo."
-  : "Microfono: tocca \"Parla\", rispondi in inglese, e la frase parte quando smetti di parlare. Con \"Mani libere\" ti ascolto da solo dopo ogni battuta.";
+  : "Microfono: premi \"Parla\" solo quando vuoi rispondere. Parli in inglese e la frase parte quando fai una pausa (o quando ripremi il pulsante).";
 $("#mic-help").textContent = micHelp();
 let USER = ""; try { USER = localStorage.getItem(KEY + ".name") || ""; } catch {}
 const uname = () => USER || "Marco";
@@ -1775,6 +1781,77 @@ const TOPIC = {
     },
     models: n => [["Yes! Go straight along the High Street and it's on your left.", "Sì! Vai dritto lungo la High Street ed è sulla sinistra."], ["It's near the town square, next to the bank.", "È vicino alla piazza, accanto alla banca."], ["Sorry, I'm not from around here.", "Mi dispiace, non sono di qui."]],
     tip: "Per dare indicazioni: go straight on (vai dritto), turn left / right (gira a sinistra / destra), it's next to… (è accanto a…), it's opposite… (di fronte a…), you can't miss it (non puoi sbagliare)." },
+  food: { follow: "f_food", backRe: /\bwhat about you\b|\byour favourite\b/, label: "Il cibo", ask: n => ["What's your favourite food?", "Qual è il tuo cibo preferito?"],
+    match: t => { const m = t.match(/\b(pizza|pasta|spaghetti|lasagne|lasagna|risotto|sushi|fish|chips|burger|burgers|steak|chicken|curry|salad|cheese|chocolate|ice cream|cake|seafood|meat|vegetables|italian food|mozzarella|carbonara|pesto|bread|rice|soup)\b/); return m ? { reply: [`Mmm, ${m[1]}! Good choice. I could eat that every day.`, `Mmm, ${m[1]}! Ottima scelta. Lo mangerei tutti i giorni.`] } : (/\b(like|love|favourite|everything|anything)\b/.test(t) ? { reply: ["Sounds delicious!", "Sembra delizioso!"] } : null); },
+    askBack: true, back: n => pickBy(n, [["I love a good Sunday roast, to be honest.", "Adoro un buon arrosto della domenica, a dire il vero."], ["I'm a big fan of fish and chips!", "Vado matto per il fish and chips!"], ["I love Italian food, especially pizza!", "Adoro il cibo italiano, soprattutto la pizza!"]]),
+    models: n => [["I love pizza, but my mum's lasagne is the best!", "Adoro la pizza, ma le lasagne di mia mamma sono le migliori!"], ["My favourite food is seafood. What about you?", "Il mio cibo preferito è il pesce. E tu?"], ["I really like Japanese food, especially sushi.", "Mi piace molto il cibo giapponese, soprattutto il sushi."]],
+    tip: "\"Favourite\" (preferito) in inglese britannico si scrive con la u. \"I could eat that every day\" = lo mangerei tutti i giorni." },
+  f_food: { label: null, ask: n => ["Do you like cooking?", "Ti piace cucinare?"],
+    match: t => /\b(no|not really|hate|never|can not cook|cannot cook)\b/.test(t) ? { reply: ["Ha! Me neither, to be honest.", "Ah! Nemmeno a me, a dire il vero."] } : (/\b(yes|yeah|love|like|sometimes|often|every|weekend)\b/.test(t) ? { reply: ["Lovely! You'll have to give me a recipe.", "Che bello! Devi darmi una ricetta."] } : null),
+    models: n => [["Yes, I love cooking, especially at the weekend.", "Sì, adoro cucinare, soprattutto nel weekend."], ["Not really. I'm not a very good cook!", "Non proprio. Non sono un gran cuoco!"], ["Sometimes. I make a great carbonara!", "A volte. Faccio un'ottima carbonara!"]],
+    tip: "\"I'm a good cook\" = cucino bene (cook è anche il cuoco). \"Me neither\" = nemmeno io." },
+  holiday: { backRe: /\bwhat about you\b|\byour holiday\b/, label: "Le vacanze", ask: n => ["Have you got any holidays planned this year?", "Hai qualche vacanza in programma quest'anno?"],
+    match: t => /\b(no|not yet|not really|maybe|don't know|do not know)\b/.test(t) && !/\bgoing\b/.test(t) ? { reply: ["Well, I hope you find time for a break soon!", "Beh, spero tu riesca a prenderti una pausa presto!"] } : (/\b(going|visit|travel|trip|spain|france|greece|london|beach|sea|mountains|island|summer|august|july|abroad)\b/.test(t) ? { reply: ["Oh, how exciting! I'm a bit jealous.", "Che emozione! Un po' ti invidio."] } : null),
+    askBack: true, back: n => pickBy(n, [["I'm going to Cornwall in the summer. I can't wait!", "Quest'estate vado in Cornovaglia. Non vedo l'ora!"], ["I'm hoping to go to Italy, actually!", "In realtà spero di andare in Italia!"], ["Just a few days in Scotland with my family.", "Solo qualche giorno in Scozia con la mia famiglia."]]),
+    models: n => [["Yes, I'm going to Spain in August.", "Sì, ad agosto vado in Spagna."], ["Not yet, but I'd like to go to London.", "Non ancora, ma vorrei andare a Londra."], ["I'm going to the seaside with my family. How about you?", "Vado al mare con la mia famiglia. E tu?"]],
+    tip: "In inglese britannico si dice \"holiday\" (in americano \"vacation\"). \"I'd like to…\" = mi piacerebbe…" },
+  past: { backRe: /\bwhat about you\b|\byour weekend\b|\bwhat did you do\b/, label: "Lo scorso weekend", ask: n => ["So, what did you do last weekend?", "Allora, cosa hai fatto lo scorso weekend?"],
+    match: t => {
+      if (/\b(went|visited|stayed|watched|played|had|met|saw|did|was|were|cooked|relaxed|worked|spent|ate|walked|slept|read|bought|called)\b/.test(t)) return { reply: ["Sounds like a nice weekend!", "Sembra un bel weekend!"] };
+      if (/\b(i go|i stay|i watch|i play|i meet|i see|i do|i cook|i work|i visit)\b/.test(t)) return { reply: ["Sounds nice!", "Che bello!"], tip: "Per il passato si usa il past simple: I went (sono andato), I stayed (sono rimasto), I watched (ho guardato), I met (ho incontrato)." };
+      return null;
+    },
+    askBack: true, back: n => pickBy(n, [["I went for a long walk by the river. It was lovely.", "Ho fatto una lunga passeggiata lungo il fiume. È stato bellissimo."], ["Not much, I just relaxed at home.", "Niente di che, mi sono rilassato a casa."], ["I visited my parents in the countryside.", "Sono andato dai miei genitori in campagna."]]),
+    models: n => [["I went to the beach with my family.", "Sono andato al mare con la mia famiglia."], ["I stayed at home and watched a film.", "Sono rimasto a casa e ho guardato un film."], ["I met some friends for dinner. It was great!", "Ho visto degli amici a cena. È stato fantastico!"]],
+    tip: "Past simple dei verbi più comuni: go → went, have → had, see → saw, meet → met, do → did, eat → ate. Per i regolari si aggiunge -ed: watched, stayed." },
+  family: { backRe: /\bwhat about you\b|\band you\b|\byour family\b/, label: "La famiglia", ask: n => ["Tell me about your family. Have you got any brothers or sisters?", "Parlami della tua famiglia. Hai fratelli o sorelle?"],
+    match: t => /\b(brother|brothers|sister|sisters|only child|children|kids|son|daughter|wife|husband|parents|family|no|yes)\b/.test(t) ? { reply: ["Oh, that's lovely. Family is so important.", "Che bello. La famiglia è così importante."] } : null,
+    askBack: true, back: n => pickBy(n, [["I've got two older sisters. They're always telling me what to do!", "Ho due sorelle più grandi. Mi dicono sempre cosa fare!"], ["I'm an only child, actually.", "In realtà sono figlio unico."], ["I've got a brother who lives in Australia.", "Ho un fratello che vive in Australia."]]),
+    models: n => [["Yes, I've got one brother and one sister.", "Sì, ho un fratello e una sorella."], ["No, I'm an only child.", "No, sono figlio unico."], ["I'm married and I've got two kids, a boy and a girl.", "Sono sposato e ho due figli, un maschio e una femmina."]],
+    tip: "\"I've got\" = ho (molto britannico). Figlio unico = only child. Fratelli e sorelle insieme = siblings." },
+  music: { backRe: /\bwhat about you\b|\band you\b/, label: "La musica", ask: n => ["What kind of music are you into?", "Che tipo di musica ti piace?"],
+    match: t => { const m = t.match(/\b(rock|pop|jazz|classical|rap|hip hop|opera|reggae|dance|techno|metal|blues|indie|italian music|eighties|80s|everything|a bit of everything)\b/); return m ? { reply: [`Oh, ${m[1]}? Nice! I don't listen to enough of that.`, `Oh, ${m[1]}? Bello! Non ne ascolto abbastanza.`] } : (/\b(like|love|listen|music|songs|singer|band)\b/.test(t) ? { reply: ["Nice! Music makes everything better.", "Bello! La musica migliora tutto."] } : null); },
+    askBack: true, back: n => pickBy(n, [["I'm really into old soul music.", "Mi piace tanto la vecchia musica soul."], ["I love going to see live bands at the pub.", "Adoro andare a sentire band dal vivo al pub."], ["Mostly pop, if I'm honest!", "Soprattutto pop, se devo essere sincero!"]]),
+    models: n => [["I'm into rock music. I love the Beatles!", "Mi piace il rock. Adoro i Beatles!"], ["A bit of everything, but mostly pop.", "Un po' di tutto, ma soprattutto pop."], ["I like Italian music. Do you know Eros Ramazzotti?", "Mi piace la musica italiana. Conosci Eros Ramazzotti?"]],
+    tip: "\"To be into something\" = essere appassionato di qualcosa: I'm into jazz." },
+  sport: { backRe: /\bwhat about you\b|\band you\b/, label: "Lo sport", ask: n => ["Are you into sport at all?", "Ti piace lo sport?"],
+    match: t => /\b(no|not really|not much|hate)\b/.test(t) && !/\b(football|tennis|gym)\b/.test(t) ? { reply: ["Fair enough! It's not for everyone.", "Giusto! Non è per tutti."] } : (/\b(football|soccer|tennis|gym|running|swimming|cycling|basketball|volleyball|rugby|skiing|golf|yes|yeah|support|team|napoli|juventus|milan|inter|roma)\b/.test(t) ? { reply: ["Brilliant! Do you watch it or play it?", "Fantastico! Lo guardi o lo pratichi?"] } : null),
+    askBack: true, back: n => pickBy(n, [["I support Manchester United, sadly!", "Tifo Manchester United, purtroppo!"], ["I go swimming twice a week.", "Vado a nuotare due volte a settimana."], ["I love watching the tennis at Wimbledon.", "Adoro guardare il tennis a Wimbledon."]]),
+    models: n => [["Yes, I love football. I support Napoli!", "Sì, adoro il calcio. Tifo Napoli!"], ["I go to the gym three times a week.", "Vado in palestra tre volte a settimana."], ["Not really, but I like watching tennis.", "Non tanto, ma mi piace guardare il tennis."]],
+    tip: "\"Tifare per una squadra\" = to support a team. Gli sport con la palla vogliono \"play\" (play football), quelli in -ing \"go\" (go swimming)." },
+  films: { backRe: /\bwhat about you\b|\band you\b/, label: "Film e serie", ask: n => ["Have you seen any good films or series lately?", "Hai visto qualche bel film o serie ultimamente?"],
+    match: t => /\b(no|not really|haven't|have not|no time)\b/.test(t) && !/\b(seen|watched)\b/.test(t) ? { reply: ["Me neither! I never have time these days.", "Nemmeno io! Non ho mai tempo ultimamente."] } : (/\b(seen|watched|watching|film|films|movie|series|netflix|show|cinema|yes)\b/.test(t) ? { reply: ["Ooh, I'll have to watch that. Was it good?", "Devo guardarlo. Era bello?"] } : null),
+    askBack: true, back: n => pickBy(n, [["I've just finished a great crime series on the BBC.", "Ho appena finito una bella serie gialla della BBC."], ["I saw a funny comedy at the cinema last week.", "La settimana scorsa ho visto una commedia divertente al cinema."], ["Not really, I mostly watch cooking shows!", "Non proprio, guardo soprattutto programmi di cucina!"]]),
+    models: n => [["Yes, I've just watched a great series on Netflix.", "Sì, ho appena visto una bella serie su Netflix."], ["Not really, I haven't had much time.", "Non proprio, non ho avuto molto tempo."], ["I saw a really good film at the cinema last week.", "La settimana scorsa ho visto un film molto bello al cinema."]],
+    tip: "Con \"lately\" e \"just\" si usa il present perfect: I've just watched… / I haven't seen anything lately." },
+  commute: { backRe: /\bwhat about you\b|\band you\b/, label: "Andare al lavoro", ask: n => ["How do you usually get to work?", "Come vai di solito al lavoro?"],
+    match: t => { const m = t.match(/\b(car|drive|bus|train|walk|on foot|bike|cycle|metro|underground|tube|scooter|motorbike|work from home|home)\b/); return m ? { reply: ["Oh right, that's handy!", "Ah, comodo!"], next: "f_commute" } : null; },
+    askBack: true, back: n => pickBy(n, [["I cycle, actually. It's only ten minutes.", "In realtà vado in bici. Sono solo dieci minuti."], ["I take the bus. It's always late!", "Prendo l'autobus. È sempre in ritardo!"], ["I walk. I live just round the corner.", "A piedi. Abito proprio qui dietro l'angolo."]]),
+    models: n => [["I usually drive. It takes about twenty minutes.", "Di solito in macchina. Ci metto circa venti minuti."], ["I go by train, and then I walk.", "Prendo il treno e poi vado a piedi."], ["I work from home two days a week.", "Lavoro da casa due giorni a settimana."]],
+    tip: "Mezzi di trasporto: by car, by bus, by train, ma on foot (a piedi). Per il tempo: It takes twenty minutes = ci metto venti minuti." },
+  f_commute: { label: null, ask: n => ["How long does it take?", "Quanto ci metti?"],
+    match: t => /\b(minute|minutes|hour|hours|half|quarter|long|not long|five|ten|fifteen|twenty|thirty|forty)\b/.test(t) ? { reply: ["Not bad at all!", "Niente male!"] } : null,
+    models: n => [["About twenty minutes.", "Circa venti minuti."], ["It takes about an hour, unfortunately.", "Purtroppo ci metto circa un'ora."], ["Not long, only ten minutes.", "Poco, solo dieci minuti."]],
+    tip: "\"It takes + tempo\": It takes half an hour (mezz'ora), a quarter of an hour (un quarto d'ora)." },
+  english: { label: "L'inglese", ask: n => ["Your English is good! How long have you been learning?", "Il tuo inglese è buono! Da quanto tempo lo studi?"],
+    match: t => /\b(year|years|month|months|week|weeks|since|for|school|recently|started|long time|not long|thank)\b/.test(t) ? { reply: ["Well, you're doing brilliantly! Keep it up.", "Beh, te la cavi benissimo! Continua così."] } : null,
+    models: n => [["Thank you! For about six months.", "Grazie! Da circa sei mesi."], ["Since January. I practise every day.", "Da gennaio. Mi esercito ogni giorno."], ["I studied it at school, but I'm starting again now.", "L'ho studiato a scuola, ma adesso sto ricominciando."]],
+    tip: "\"How long have you been…?\" si risponde con for + durata (for six months) o since + momento (since January). Quando ti fanno un complimento: \"Thank you!\"." },
+  season: { backRe: /\bwhat about you\b|\band you\b/, label: "Le stagioni", ask: n => ["What's your favourite time of year?", "Qual è il tuo periodo dell'anno preferito?"],
+    match: t => { const m = t.match(/\b(spring|summer|autumn|fall|winter|christmas|easter|august|december)\b/); return m ? { reply: [`Oh, ${m[1]}! Me too, I think.`, `Oh, ${m[1]}! Anche io, credo.`] } : null; },
+    askBack: true, back: n => pickBy(n, [["I love autumn, with all the colours.", "Adoro l'autunno, con tutti quei colori."], ["Christmas, definitely!", "Natale, senza dubbio!"], ["Summer, because the evenings are so long.", "L'estate, perché le serate sono lunghissime."]]),
+    models: n => [["I love summer because I can go to the beach.", "Adoro l'estate perché posso andare al mare."], ["Autumn. I love the colours.", "L'autunno. Adoro i colori."], ["Christmas time. It's so cosy!", "Il periodo di Natale. È così accogliente!"]],
+    tip: "Autunno = autumn (UK) / fall (US). Le stagioni non vogliono la maiuscola: in summer, in winter." },
+  home: { backRe: /\bwhat about you\b|\band you\b/, label: "La casa", ask: n => ["Do you live in a flat or a house?", "Vivi in un appartamento o in una casa?"],
+    match: t => /\b(flat|apartment|house|home|city|centre|center|countryside|village|garden|balcony|floor)\b/.test(t) ? { reply: ["Oh, nice. Do you like living there?", "Bello. Ti piace viverci?"] } : null,
+    askBack: true, back: n => pickBy(n, [["I've got a little house with a garden just outside town.", "Ho una casetta con giardino appena fuori città."], ["I live in a flat above a shop on the High Street.", "Vivo in un appartamento sopra un negozio sulla High Street."], ["A small terraced house near the park.", "Una casetta a schiera vicino al parco."]]),
+    models: n => [["I live in a flat in the city centre.", "Vivo in un appartamento in centro."], ["A house with a small garden, near the sea.", "Una casa con un piccolo giardino, vicino al mare."], ["A flat on the third floor. It's small, but I like it.", "Un appartamento al terzo piano. È piccolo, ma mi piace."]],
+    tip: "Appartamento = flat (UK) / apartment (US). Al terzo piano = on the third floor." },
+  pets: { backRe: /\bwhat about you\b|\band you\b/, label: "Gli animali", ask: n => ["Have you got any pets?", "Hai animali domestici?"],
+    match: t => /\b(dog|dogs|cat|cats|fish|bird|rabbit|hamster|no|yes|allergic)\b/.test(t) ? { reply: ["Aw, lovely! I'm definitely more of a dog person.", "Che dolce! Io preferisco decisamente i cani."] } : null,
+    askBack: true, back: n => pickBy(n, [["I've got a cat called Biscuit.", "Ho un gatto che si chiama Biscuit."], ["We've got an old dog. He's lovely but very lazy!", "Abbiamo un vecchio cane. È dolcissimo ma pigrissimo!"], ["No, but I'd love a dog one day.", "No, ma un giorno mi piacerebbe un cane."]]),
+    models: n => [["Yes, I've got a dog called Rocky.", "Sì, ho un cane che si chiama Rocky."], ["No, but I'd love a cat.", "No, ma mi piacerebbe un gatto."], ["No, I'm allergic to cats!", "No, sono allergico ai gatti!"]],
+    tip: "\"Called\" = che si chiama: a dog called Rocky. \"I'm a dog person\" = preferisco i cani." },
   bye: { label: "Saluti", ask: n => ["Well, it was lovely chatting with you! Have a great day!", "Beh, è stato bello chiacchierare con te! Buona giornata!"],
     match: t => /\b(bye|you too|see you|nice|thank|thanks|cheers|take care|great day|lovely|goodbye)\b/.test(t) ? { reply: ["Bye! See you around!", "Ciao! Ci vediamo in giro!"] } : null,
     models: n => [["You too! It was nice talking to you. Bye!", "Anche a te! È stato bello parlare con te. Ciao!"], ["Thanks, you too! See you soon.", "Grazie, anche a te! A presto."], ["Thank you! Take care. Bye!", "Grazie! Stammi bene. Ciao!"]],
@@ -1834,12 +1911,14 @@ function reflect(raw) {
 const AL = /\b(really|sounds (great|good|nice|lovely|interesting|fun|amazing|brilliant)|interesting|wow|cool|how nice|that is (great|nice|lovely|amazing|interesting|brilliant)|lucky you|oh nice|brilliant|fantastic|i see|oh really)\b/;
 const VISITS_KEY = KEY + ".visits";
 function getVisits() { try { return JSON.parse(localStorage.getItem(VISITS_KEY)) || {}; } catch { return {}; } }
+// everyday subjects people chat about; each visit brings different ones, and you can pick one yourself
+const TOPIC_POOL = ["today", "weather", "job", "life", "free", "from", "plans", "food", "holiday", "past", "family", "music", "sport", "films", "commute", "english", "season", "home", "pets"];
 function planFor(n) {
   const v = getVisits(), k = v[n.p.id] || 0;
   try { v[n.p.id] = k + 1; localStorage.setItem(VISITS_KEY, JSON.stringify(v)); } catch {}
-  const pool = ["today", "weather", "job", "life", "free", "from", "plans"];
-  const s = (k * 3 + n.vi) % pool.length;
-  const picks = [pool[s], pool[(s + 2) % pool.length], pool[(s + 4) % pool.length]];
+  const pool = TOPIC_POOL;
+  const s = (k * 5 + n.vi * 3) % pool.length;
+  const picks = [0, 3, 7, 11].map(o => pool[(s + o) % pool.length]);
   if (n.p.stranger) return [k ? TOPIC.again : TOPIC.greet, TOPIC.how, TOPIC[picks[0]], TOPIC[picks[1]], TOPIC.directions, TOPIC.bye];
   return [k ? TOPIC.again : TOPIC.greet, TOPIC.how, ...picks.map(x => TOPIC[x]), ...placeTopics(n), TOPIC.bye];
 }
@@ -1849,7 +1928,7 @@ let C = null;
 const topic = () => C.plan[C.i];
 const npcVoice = () => ({ female: C.n.female, vi: C.n.vi, who: C.n.obj });
 const coachVoice = (extra = {}) => Object.assign({ female: !C.n.female, vi: 2, coach: true }, extra);
-const handsFree = () => $("#handsfree").checked && !micBlocked;
+const handsFree = () => false; // the microphone only listens when you press "Parla"
 function npcSay(en, it, listenAfter = true, slow = false) {
   C.lastNpc = [en, it];
   $("#d-npc").textContent = en;
@@ -2015,7 +2094,7 @@ function repeatAfterMe(model) {
   if (C.lastRep !== model) C.tries = 0;
   C.lastRep = model; C.repeat = model;
   $("#heard").textContent = `Ripeti: "${model[0]}"`; $("#heard").classList.remove("live");
-  speak(model[0], coachVoice({ onend: () => { if (C && C.repeat === model && !micBlocked) setTimeout(() => startListening(true), 250); } }));
+  speak(model[0], coachVoice());
 }
 function checkRepeat(raw) {
   const model = C.repeat; C.repeat = null;
@@ -2137,6 +2216,26 @@ async function startListening(auto) {
   try { rec.start(); } catch { setMicUI(false); }
 }
 $("#mic").onclick = () => { if (MIC.on) { if ((MIC.final + MIC.interim).trim()) finishUtterance(); else stopListening(); return; } startListening(false); };
+$("#topic-btn").onclick = () => {
+  if (!C) return;
+  const box = $("#topic-pick");
+  if (!box.hidden) { box.hidden = true; return; }
+  box.innerHTML = ""; box.append(el("p", null, C.mode === "ai" ? "Di cosa vuoi parlare? Te lo chiede subito." : "Di cosa vuoi parlare? Scegli e te lo chiede subito."));
+  TOPIC_POOL.forEach(k => {
+    const b = el("button", null, TOPIC[k].label); b.type = "button";
+    b.onclick = () => {
+      box.hidden = true; stopListening();
+      if (C.mode === "ai") { const [en] = TOPIC[k].ask(C.n); userSaid(`Let's talk about something else: ${TOPIC[k].label === "Il meteo" ? "the weather" : en}`); return; }
+      if (C.done) { C.done = false; C.plan.push(TOPIC[k], TOPIC.bye); C.i = C.plan.length - 2; }
+      else C.plan.splice(C.i, 0, TOPIC[k]);
+      $("#d-fb").innerHTML = ""; renderTopics();
+      const [en, it] = TOPIC[k].ask(C.n);
+      npcSay(`Oh, by the way… ${en}`, `Ah, a proposito… ${it}`);
+    };
+    box.append(b);
+  });
+  box.hidden = false;
+};
 $("#handsfree").onchange = () => { try { localStorage.setItem(KEY + ".hf", $("#handsfree").checked ? "1" : "0"); } catch {} };
 $("#send").onclick = () => userSaid($("#say").value);
 $("#say").addEventListener("input", () => { userTalkingUntil = performance.now() + 1500; });
